@@ -88,7 +88,7 @@ class AskTv: ParsedAnimeHttpSource() {
 
     override fun videoListParse(response: Response): List<Video> {
         val episodeData = response.asJsoup().select(".getEmbed a").attr("href").substringAfter("post=")
-        val jsonData = json.decodeFromString<EpisodeData>(episodeData)
+        val jsonData = json.decodeFromString<EpisodeData>(episodeData.decodeBase64())
         return jsonData.servers.parallelMap {
             runCatching { extractVideos(it) }.getOrElse { emptyList() }
         }.flatten()
