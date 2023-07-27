@@ -14,7 +14,7 @@ class AskTv: ParsedAnimeHttpSource() {
 
     override val name = "قصة عشق"
 
-    override val baseUrl = "https://bit.ly/3sktvtr"
+    override val baseUrl = "https://arab3sk.net"
 
     override val lang = "ar"
 
@@ -32,7 +32,7 @@ class AskTv: ParsedAnimeHttpSource() {
 
     override fun popularAnimeNextPageSelector(): String = "div.navigation div.pagination a:contains(›)"
 
-    override fun popularAnimeRequest(page: Int): Request = GET("/all-series/page/$page/")
+    override fun popularAnimeRequest(page: Int): Request = GET("$baseUrl/all-series/page/$page/")
 
     override fun popularAnimeSelector(): String = "article.postEp"
 
@@ -94,7 +94,7 @@ class AskTv: ParsedAnimeHttpSource() {
 
     override fun latestUpdatesNextPageSelector(): String = popularAnimeNextPageSelector()
 
-    override fun latestUpdatesRequest(page: Int): Request = GET("/episodes/page/$page/")
+    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/episodes/page/$page/")
 
     override fun latestUpdatesSelector(): String = "article.postEp"
 
