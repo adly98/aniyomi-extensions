@@ -107,6 +107,13 @@ class AskTv: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun videoUrlParse(document: Document): String  = throw Exception("not used")
 
+    override fun List<Video>.sort(): List<Video> {
+        val quality = preferences.getString("preferred_quality", "1080p")!!
+        return sortedWith(
+            compareBy { it.quality.contains(quality) },
+        ).reversed()
+    }
+
     override fun videoListParse(response: Response): List<Video> {
         val episodeData = response.asJsoup().select(".getEmbed a").attr("href").substringAfter("post=")
         val jsonData = json.decodeFromString<EpisodeData>(episodeData.decodeBase64())
