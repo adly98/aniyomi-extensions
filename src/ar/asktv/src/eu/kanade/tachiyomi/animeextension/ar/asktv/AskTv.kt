@@ -57,14 +57,14 @@ class AskTv: ParsedAnimeHttpSource() {
     // ============================== Episodes ==============================
     override fun episodeFromElement(element: Element): SEpisode {
         return SEpisode.create().apply {
-            name = element.select(".title").text()
+            name = element.select("a div.title").text().trim()
             episode_number = element.select(".episodeNum").text().filter { it.isDigit() }.toFloat()
             val url = element.select("a").attr("href")
                 .substringAfter("url=").replace("%3D","=")
             setUrlWithoutDomain(url.decodeBase64())
         }
     }
-    override fun episodeListSelector(): String = popularAnimeSelector()
+    override fun episodeListSelector(): String = "article.postEp"
 
     // =========================== Anime Details ============================
     override fun animeDetailsParse(document: Document): SAnime {
@@ -114,7 +114,7 @@ class AskTv: ParsedAnimeHttpSource() {
                 val script = request.selectFirst("script:containsData(sources)")!!.data()
                 val streamLink = Regex("sources:\\s*\\[\\{\\s*\\t*file:\\s*[\"']([^\"']+)").find(script)!!.groupValues[1]
                 val m3u8 = client.newCall(GET(streamLink)).execute().body.string()
-                Regex("EXT-X-I-FRAME.*x(.*),URI=\"(.*)\"").findAll(m3u8).map {
+                Regex("#EXT-X-STREAM.*?x(.*?),.*\\n(.+)").findAll(m3u8).map {
                     Video(it.groupValues[2], "Estream: ${it.groupValues[1]}p", it.groupValues[2])
                 }.toList()
             }
@@ -130,7 +130,7 @@ class AskTv: ParsedAnimeHttpSource() {
                 val m3u8 = Regex("sources:\\s*\\[\\{\\s*\\t*file:\\s*[\"']([^\"']+)").find(data)!!.groupValues[1]
                 val qualities = data.substringAfter("qualityLabels").substringBefore("}")
                 val qRegex = Regex("\".*?\"\\s*:\\s*\"(.*?)\"").find(qualities)!!
-                Video(m3u8, qRegex.groupValues[1], m3u8).let(::listOf)
+                Video(m3u8, "Pro HD: " + qRegex.groupValues[1], m3u8).let(::listOf)
             }
             else -> null
         } ?: emptyList()
