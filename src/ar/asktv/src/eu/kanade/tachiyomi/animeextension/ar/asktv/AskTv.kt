@@ -1,13 +1,17 @@
 package eu.kanade.tachiyomi.animeextension.ar.asktv
 
+import dev.datlag.jsunpacker.JsUnpacker
 import eu.kanade.tachiyomi.animeextension.ar.asktv.dto.EpisodeData
 import eu.kanade.tachiyomi.animeextension.ar.asktv.dto.Server
+import eu.kanade.tachiyomi.animeextension.ar.asktv.extractors.DailymotionExtractor
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.lib.okruextractor.OkruExtractor
+import eu.kanade.tachiyomi.lib.streamsbextractor.StreamSBExtractor
+import eu.kanade.tachiyomi.lib.vidbomextractor.VidBomExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
 import kotlinx.coroutines.Dispatchers
@@ -102,6 +106,32 @@ class AskTv: ParsedAnimeHttpSource() {
             "ok" -> {
                 OkruExtractor(client).videosFromUrl("https://www.ok.ru/videoembed/${server.id}")
             }
+            "dailymotion" -> {
+                DailymotionExtractor(client).videosFromUrl(server.id, headers)
+            }
+            "estream" -> {
+                val request = client.newCall(GET("https://arabveturk.sbs/embed-${server.id}.html")).execute().asJsoup()
+                val script = request.selectFirst("script:containsData(sources)")!!.data()
+                val streamLink = Regex("sources:\\s*\\[\\{\\s*\\t*file:\\s*[\"']([^\"']+)").find(script)!!.groupValues[1]
+                val m3u8 = client.newCall(GET(streamLink)).execute().body.string()
+                Regex("EXT-X-I-FRAME.*x(.*),URI=\"(.*)\"").findAll(m3u8).map {
+                    Video(it.groupValues[2], "Estream: ${it.groupValues[1]}p", it.groupValues[2])
+                }.toList()
+            }
+            "now" -> {
+                VidBomExtractor(client).videosFromUrl("https://extreamnow.org/embed-${server.id}.html")
+            }
+            "Red HD" -> {
+                StreamSBExtractor(client).videosFromUrl("https://www.sbbrisk.com/e/${server.id}", headers)
+            }
+            "Pro HD" -> {
+                val request = client.newCall(GET("https://segavid.com/embed-${server.id}.html", headers)).execute().asJsoup()
+                val data = JsUnpacker.unpackAndCombine(request.selectFirst("script:containsData(sources)")!!.data())!!
+                val m3u8 = Regex("sources:\\s*\\[\\{\\s*\\t*file:\\s*[\"']([^\"']+)").find(data)!!.groupValues[1]
+                val qualities = data.substringAfter("qualityLabels").substringBefore("}")
+                val qRegex = Regex("\".*?\"\\s*:\\s*\"(.*?)\"").find(qualities)!!
+                Video(m3u8, qRegex.groupValues[1], m3u8).let(::listOf)
+            }
             else -> null
         } ?: emptyList()
     }
@@ -139,8 +169,4 @@ class AskTv: ParsedAnimeHttpSource() {
     override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/episodes/page/$page/")
 
     override fun latestUpdatesSelector(): String = "article.post"
-
-    companion object {
-        const val PREFIX_SEARCH = "id:"
-    }
 }
