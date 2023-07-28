@@ -72,7 +72,7 @@ class AskTv: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun episodeListSelector(): String = "article.postEp"
     override fun episodeListParse(response: Response): List<SEpisode> {
         val episodes = response.asJsoup().select(episodeListSelector())
-        return if(episodes.isEmpty()){
+        return if(episodes.isNullOrEmpty()){
             SEpisode.create().apply {
                 name = "مشاهدة"
                 setUrlWithoutDomain(response.request.url.toString())
