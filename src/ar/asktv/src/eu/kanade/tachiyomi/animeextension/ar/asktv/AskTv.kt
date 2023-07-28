@@ -23,6 +23,7 @@ import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import java.lang.Exception
 
 class AskTv: ParsedAnimeHttpSource() {
 
@@ -55,17 +56,27 @@ class AskTv: ParsedAnimeHttpSource() {
     override fun popularAnimeSelector(): String = "article.postEp"
 
     // ============================== Episodes ==============================
-    override fun episodeFromElement(element: Element): SEpisode {
-        return SEpisode.create().apply {
-            name = element.select("a div.title").text().trim()
-            episode_number = element.select(".episodeNum").text().filter { it.isDigit() }.toFloat()
-            val url = element.select("a").attr("href")
-                .substringAfter("url=").replace("%3D","=")
-            setUrlWithoutDomain(url.decodeBase64())
+    override fun episodeFromElement(element: Element): SEpisode = throw Exception("not used")
+    override fun episodeListSelector(): String = "article.postEp"
+    override fun episodeListParse(response: Response): List<SEpisode> {
+        val episodes = response.asJsoup().select(episodeListSelector())
+        return if(episodes.isEmpty()){
+            SEpisode.create().apply {
+                name = "مشاهدة"
+                setUrlWithoutDomain(response.request.url.toString())
+            }.let(::listOf)
+        } else {
+            episodes.map {
+                SEpisode.create().apply {
+                    name = it.select("a div.title").text().trim()
+                    episode_number = it.select(".episodeNum").text().filter { it.isDigit() }.toFloat()
+                    val url = it.select("a").attr("href")
+                        .substringAfter("url=").replace("%3D","=")
+                    setUrlWithoutDomain(url.decodeBase64())
+                }
+            }
         }
     }
-    override fun episodeListSelector(): String = "article.postEp"
-
     // =========================== Anime Details ============================
     override fun animeDetailsParse(document: Document): SAnime {
         return SAnime.create().apply {
