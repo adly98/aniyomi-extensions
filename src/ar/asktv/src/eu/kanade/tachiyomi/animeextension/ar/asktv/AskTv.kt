@@ -1,9 +1,16 @@
 package eu.kanade.tachiyomi.animeextension.ar.asktv
 
+import android.app.Application
+import android.content.SharedPreferences
+import android.widget.Toast
+import androidx.preference.EditTextPreference
+import androidx.preference.ListPreference
+import androidx.preference.PreferenceScreen
 import dev.datlag.jsunpacker.JsUnpacker
 import eu.kanade.tachiyomi.animeextension.ar.asktv.dto.EpisodeData
 import eu.kanade.tachiyomi.animeextension.ar.asktv.dto.Server
 import eu.kanade.tachiyomi.animeextension.ar.asktv.extractors.DailymotionExtractor
+import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
@@ -23,13 +30,15 @@ import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.lang.Exception
 
-class AskTv: ParsedAnimeHttpSource() {
+class AskTv: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val name = "قصة عشق"
 
-    override val baseUrl = "https://arab3sk.net"
+    override val baseUrl by lazy { getPrefHostUrl(preferences) }
 
     override val lang = "ar"
 
@@ -39,6 +48,9 @@ class AskTv: ParsedAnimeHttpSource() {
 
     override val supportsLatest = true
 
+    private val preferences: SharedPreferences by lazy {
+        Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
+    }
     // ============================== Popular ===============================
     override fun popularAnimeFromElement(element: Element): SAnime {
         return SAnime.create().apply{
@@ -89,17 +101,11 @@ class AskTv: ParsedAnimeHttpSource() {
     }
 
     // ============================ Video Links =============================
-    override fun videoFromElement(element: Element): Video {
-        TODO("Not yet implemented")
-    }
+    override fun videoFromElement(element: Element): Video  = throw Exception("not used")
 
-    override fun videoListSelector(): String {
-        TODO("Not yet implemented")
-    }
+    override fun videoListSelector(): String  = throw Exception("not used")
 
-    override fun videoUrlParse(document: Document): String {
-        TODO("Not yet implemented")
-    }
+    override fun videoUrlParse(document: Document): String  = throw Exception("not used")
 
     override fun videoListParse(response: Response): List<Video> {
         val episodeData = response.asJsoup().select(".getEmbed a").attr("href").substringAfter("post=")
@@ -180,4 +186,48 @@ class AskTv: ParsedAnimeHttpSource() {
     override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/episodes/page/$page/")
 
     override fun latestUpdatesSelector(): String = "article.post"
+    // =============================== Preference ===============================
+    private fun getPrefHostUrl(preferences: SharedPreferences): String = preferences.getString(
+        "default_domain",
+        "https://arab3sk.net",
+    )!!.trim()
+    override fun setupPreferenceScreen(screen: PreferenceScreen) {
+        val defaultDomain = EditTextPreference(screen.context).apply {
+            key = "default_domain"
+            title = "Enter default domain"
+            summary = getPrefHostUrl(preferences)
+            this.setDefaultValue(getPrefHostUrl(preferences))
+            dialogTitle = "Default domain"
+            dialogMessage = "You can change the site domain from here"
+
+            setOnPreferenceChangeListener { _, newValue ->
+                try {
+                    val res = preferences.edit().putString("default_domain", newValue as String).commit()
+                    Toast.makeText(screen.context, "Restart Aniyomi to apply changes", Toast.LENGTH_LONG).show()
+                    res
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    false
+                }
+            }
+        }
+
+        val videoQualityPref = ListPreference(screen.context).apply {
+            key = "preferred_quality"
+            title = "Preferred quality"
+            entries = arrayOf("1080p", "720p", "480p", "360p", "240p")
+            entryValues = arrayOf("1080", "720", "480", "360", "240")
+            setDefaultValue("1080")
+            summary = "%s"
+
+            setOnPreferenceChangeListener { _, newValue ->
+                val selected = newValue as String
+                val index = findIndexOfValue(selected)
+                val entry = entryValues[index] as String
+                preferences.edit().putString(key, entry).commit()
+            }
+        }
+        screen.addPreference(defaultDomain)
+        screen.addPreference(videoQualityPref)
+    }
 }
