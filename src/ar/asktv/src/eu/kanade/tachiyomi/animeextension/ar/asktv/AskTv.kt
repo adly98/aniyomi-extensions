@@ -90,7 +90,7 @@ class AskTv: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 document.select(episodeListSelector()).forEach{ episode ->
                     addEpisodeNew(
                         episode.select("a").attr("href").substringAfter("url=").replace("%3D","="),
-                        episode.select("a div.title").text().trim(),
+                        "الحلفة ${episode.select(".episodeNum").text().filter { it.isDigit() }}",
                         episode.select(".episodeNum").text().filter { it.isDigit() }.toFloat()
                     )
                 }
@@ -178,7 +178,8 @@ class AskTv: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             thumbnail_url = element.select(".imgBg").attr("style")
                 .substringAfter("url(").substringBefore(")")
             title = element.select(".title").text()
-            setUrlWithoutDomain(element.select("a").attr("href"))
+            val url = element.select("a").attr("href")
+            setUrlWithoutDomain(if("url=" in url) url.substringAfter("url=").decodeBase64() else url)
         }
     }
 
