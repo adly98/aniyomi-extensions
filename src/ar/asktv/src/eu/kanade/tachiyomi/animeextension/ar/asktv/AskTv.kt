@@ -90,7 +90,7 @@ class AskTv: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 document.select(episodeListSelector()).forEach{ episode ->
                     addEpisodeNew(
                         episode.select("a").attr("href").substringAfter("url=").replace("%3D","="),
-                        "الحلفة ${episode.select(".episodeNum").text().filter { it.isDigit() }}",
+                        episode.select("a").attr("href").replace(" - قصة عشق",""),
                         episode.select(".episodeNum").text().filter { it.isDigit() }.toFloat()
                     )
                 }
@@ -108,7 +108,7 @@ class AskTv: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             title = infoCard.select(".info h1").text()
             description = infoCard.select(".info .story").text()
             artist = infoCard.select(".info .tax a").joinToString(", ") { it.attr("title") }
-            status = if("الأخيرة" in document.body().text()) SAnime.COMPLETED else SAnime.ONGOING
+            status = if("الأخيرة" in document.body().text() || "فيلم" in infoCard.select("h1").text()) SAnime.COMPLETED else SAnime.ONGOING
         }
     }
 
