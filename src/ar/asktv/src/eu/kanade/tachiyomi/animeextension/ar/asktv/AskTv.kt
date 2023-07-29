@@ -71,23 +71,35 @@ class AskTv: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun episodeFromElement(element: Element): SEpisode = throw Exception("not used")
     override fun episodeListSelector(): String = "article.postEp"
     override fun episodeListParse(response: Response): List<SEpisode> {
-        val episodes = response.asJsoup().select(episodeListSelector())
-        return if(episodes.isNullOrEmpty()){
-            SEpisode.create().apply {
-                name = "مشاهدة"
-                setUrlWithoutDomain(response.request.url.toString())
-            }.let(::listOf)
-        } else {
-            episodes.map {
-                SEpisode.create().apply {
-                    name = it.select("a div.title").text().trim()
-                    episode_number = it.select(".episodeNum").text().filter { it.isDigit() }.toFloat()
-                    val url = it.select("a").attr("href")
-                        .substringAfter("url=").replace("%3D","=")
-                    setUrlWithoutDomain(url.decodeBase64())
+        val episodes = mutableListOf<SEpisode>()
+
+        fun addEpisodeNew(url: String, title: String, num: Float = 1F) {
+            val episode = SEpisode.create()
+            episode.setUrlWithoutDomain(url)
+            episode.name = title
+            episode.episode_number = num
+            episodes.add(episode)
+        }
+
+        fun addEpisodes(response: Response) {
+            val document = response.asJsoup()
+            val url = response.request.url.toString()
+            if(document.select(episodeListSelector()).isNullOrEmpty()){
+                addEpisodeNew(url, "مشاهدة")
+            } else {
+                document.select(episodeListSelector()).forEach{ episode ->
+                    addEpisodeNew(
+                        episode.select("a").attr("href").substringAfter("url=").replace("%3D","="),
+                        episode.select("a div.title").text().trim(),
+                        episode.select(".episodeNum").text().filter { it.isDigit() }.toFloat()
+                    )
                 }
             }
         }
+
+        addEpisodes(response)
+
+        return episodes
     }
     // =========================== Anime Details ============================
     override fun animeDetailsParse(document: Document): SAnime {
