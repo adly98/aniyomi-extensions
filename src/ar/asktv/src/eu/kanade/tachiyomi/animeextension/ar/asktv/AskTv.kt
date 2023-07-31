@@ -89,8 +89,8 @@ class AskTv: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             } else {
                 document.select(episodeListSelector()).forEach{ episode ->
                     addEpisodeNew(
-                        episode.select("a").attr("href").substringAfter("url=").replace("%3D","="),
-                        episode.select("a").attr("title").replace(" - قصة عشق",""),
+                        episode.select("a").attr("href").substringAfter("url=").replace("%3D","=").decodeBase64(),
+                        episode.select("a").select(".title").text().trim(),
                         episode.select(".episodeNum").text().filter { it.isDigit() }.toFloat()
                     )
                 }
