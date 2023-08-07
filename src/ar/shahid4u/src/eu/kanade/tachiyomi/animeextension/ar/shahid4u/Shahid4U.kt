@@ -54,7 +54,7 @@ class Shahid4U : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun popularAnimeSelector(): String = "div.glide-slides div.media-block"
 
-    override fun popularAnimeRequest(page: Int): Request = GET(if (page == 1)" $baseUrl/home2/" else baseUrl)
+    override fun popularAnimeRequest(page: Int): Request = GET(baseUrl)
 
     override fun popularAnimeFromElement(element: Element): SAnime {
         val anime = SAnime.create()
@@ -91,7 +91,7 @@ class Shahid4U : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }
     }
 
-    override fun popularAnimeNextPageSelector(): String = "div.paginate ul.page-numbers li.active + li a"
+    override fun popularAnimeNextPageSelector(): String = ".noNext"
 
     // episodes
 
@@ -304,7 +304,7 @@ class Shahid4U : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return anime
     }
 
-    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/home2/page/$page/")
+    override fun latestUpdatesRequest(page: Int): Request = GET(if(page == 1) baseUrl else "$baseUrl/?page=$page")
 
     override fun latestUpdatesSelector(): String = "div.MediaGrid div.media-block"
 
@@ -388,7 +388,7 @@ class Shahid4U : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         private const val PREF_QUALITY_DEFAULT = "1080"
         private val PREF_QUALITY_ENTRIES = arrayOf("1080p", "720p", "480p", "360p", "240p")
 
-        private const val PREF_BASE_URL_DEFAULT = "https://shhahed4u.com/"
+        private const val PREF_BASE_URL_DEFAULT = "https://shhahed4u.com"
         private const val PREF_BASE_URL_KEY = "default_domain"
         private const val PREF_BASE_URL_TITLE = "Enter default domain"
         private const val PREF_BASE_URL_DIALOG_TITLE = "Default domain"
