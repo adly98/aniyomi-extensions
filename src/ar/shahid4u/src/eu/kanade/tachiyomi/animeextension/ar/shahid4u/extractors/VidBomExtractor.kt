@@ -6,52 +6,16 @@ import eu.kanade.tachiyomi.util.asJsoup
 import okhttp3.OkHttpClient
 
 class VidBomExtractor(private val client: OkHttpClient) {
-    fun videosFromUrl(url: String): List<Video> {
+    fun videosFromUrl(url: String, host: String): List<Video> {
         val doc = client.newCall(GET(url)).execute().asJsoup()
         val script = doc.selectFirst("script:containsData(sources)")!!
         val data = script.data().substringAfter("sources: [").substringBefore("],")
-        val sources = data.split("file:\"").drop(1)
-        val videoList = mutableListOf<Video>()
-        for (source in sources) {
+        return data.split("file:\"").drop(1).map { source ->
             val src = source.substringBefore("\"")
-            var quality = "Vidbom: " + source.substringAfter("label:\"").substringBefore("\"") // .substringAfter("format: '")
-            if (quality.length > 15) {
-                quality = "Vidshare: 480p"
-            }
-            val video = Video(src, quality, src)
-            videoList.add(video)
+            val qualityHost = host.replaceFirstChar(Char::uppercase)
+            var quality = source.substringAfter("label:\"").substringBefore("\"")
+            if (quality.length > 15) { quality = "480p" }
+            Video(src, "$qualityHost: $quality", src)
         }
-        return videoList
-        /*Log.i("looool", "$js")
-        val json = JSONObject(js)
-        Log.i("looool", "$json")
-        val videoList = mutableListOf<Video>()
-        val jsonArray = json.getJSONArray("sources")
-        for (i in 0 until jsonArray.length()) {
-            val `object` = jsonArray.getJSONObject(i)
-            val videoUrl = `object`.getString("file")
-            Log.i("looool", videoUrl)
-            val quality = "Vidbom:" + `object`.getString("label")
-            videoList.add(Video(videoUrl, quality, videoUrl))
-        }
-        return videoList*/
-        /*if (jas.contains("sources")) {
-            val js = script.data()
-            val json = JSONObject(js)
-            val videoList = mutableListOf<Video>()
-            val jsonArray = json.getJSONArray("sources")
-            for (i in 0 until jsonArray.length()) {
-                val `object` = jsonArray.getJSONObject(i)
-                val videoUrl = `object`.getString("file")
-                Log.i("lol", videoUrl)
-                val quality = "Vidbom:" + `object`.getString("label")
-                videoList.add(Video(videoUrl, quality, videoUrl))
-            }
-            return videoList
-        } else {
-            val videoList = mutableListOf<Video>()
-            videoList.add(Video(url, "no 2video", null))
-            return videoList
-        }*/
     }
 }

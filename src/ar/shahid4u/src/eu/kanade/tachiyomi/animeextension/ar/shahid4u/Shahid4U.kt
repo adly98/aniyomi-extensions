@@ -2,8 +2,10 @@ package eu.kanade.tachiyomi.animeextension.ar.shahid4u
 
 import android.app.Application
 import android.content.SharedPreferences
+import android.widget.Toast
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
+import eu.kanade.tachiyomi.animeextension.ar.shahid4u.extractors.StreamWishExtractor
 import eu.kanade.tachiyomi.animeextension.ar.shahid4u.extractors.UQLoadExtractor
 import eu.kanade.tachiyomi.animeextension.ar.shahid4u.extractors.VidBomExtractor
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
@@ -13,11 +15,14 @@ import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
-import eu.kanade.tachiyomi.lib.doodextractor.DoodExtractor
 import eu.kanade.tachiyomi.lib.okruextractor.OkruExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.util.asJsoup
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.runBlocking
 import okhttp3.FormBody
 import okhttp3.Headers
 import okhttp3.OkHttpClient
@@ -33,7 +38,7 @@ class Shahid4U : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val name = "شاهد فور يو"
 
-    override val baseUrl = "https://shahed4u.agency"
+    override val baseUrl by lazy { getPrefBaseUrl() }
 
     override val lang = "ar"
 
@@ -166,8 +171,6 @@ class Shahid4U : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
-        val videos = mutableListOf<Video>()
-        val servers = document.select(videoListSelector())
         fun getUrl(v_id: String, i: String): String {
             val refererHeaders = Headers.headersOf(
                 "referer",
@@ -189,69 +192,44 @@ class Shahid4U : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             ).execute().asJsoup()
             return iframe.select("iframe").attr("src")
         }
-        for (server in servers) {
-            if (server.hasClass("active")) {
-                // special server
-                val videosFromURL = videosFromElement(client.newCall(GET(document.select("input[name=fserver]").`val`(), headers)).execute().asJsoup())
-                videos.addAll(videosFromURL)
-            } else if (server.text().contains("ok")) {
-                val videosFromURL = OkruExtractor(client).videosFromUrl(getUrl(server.attr("data-id"), server.attr("data-i")))
-                videos.addAll(videosFromURL)
-            } else if (server.text().contains("vidbom", ignoreCase = true) or server.text().contains("Vidshare", ignoreCase = true)) {
-                val videosFromURL = VidBomExtractor(client).videosFromUrl(getUrl(server.attr("data-id"), server.attr("data-i")))
-                videos.addAll(videosFromURL)
-            } else if (server.text().contains("dood", ignoreCase = true)) {
-                val videosFromURL = DoodExtractor(client).videoFromUrl(getUrl(server.attr("data-id"), server.attr("data-i")))
-                if (videosFromURL != null) videos.add(videosFromURL)
-            } else if (server.text().contains("uqload", ignoreCase = true)) {
-                val videosFromURL = UQLoadExtractor(client).videoFromUrl(getUrl(server.attr("data-id"), server.attr("data-i")), "Uqload: 720p")
-                if (videosFromURL != null) videos.add(videosFromURL)
-            }
-        }
-        return videos
+        return document.select(videoListSelector()).parallelMap { server ->
+            val streamURL = getUrl(server.attr("data-id"), server.attr("data-i"))
+            runCatching {
+                when{
+                    VIDBOM_REGEX.containsMatchIn(streamURL) -> {
+                        val finalUrl = VIDBOM_REGEX.find(streamURL)!!
+                        VidBomExtractor(client).videosFromUrl("https://www.${finalUrl.groupValues[0]}.html", finalUrl.groupValues[1])
+                    }
+                    UQLOAD_REGEX.containsMatchIn(streamURL) -> {
+                        val finalUrl = UQLOAD_REGEX.find(streamURL)!!
+                        UQLoadExtractor(client).videosFromUrl("https://www.${finalUrl.groupValues[0]}.html", finalUrl.groupValues[1])
+                    }
+                    STREAMWISH_REGEX.containsMatchIn(streamURL) -> {
+                        val headers = headers.newBuilder()
+                            .set("Referer", streamURL)
+                            .set("Accept-Encoding", "gzip, deflate, br")
+                            .set("Accept-Language", "en-US,en;q=0.5")
+                            .set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:101.0) Gecko/20100101 Firefox/101.0")
+                            .build()
+                        val host = STREAMWISH_REGEX.find(streamURL)!!.groupValues[1]
+                        StreamWishExtractor(client).videosFromUrl(streamURL, host, headers)
+                    }
+                    "ok.ru" in streamURL -> {
+                        OkruExtractor(client).videosFromUrl(streamURL)
+                    }
+                    else ->  emptyList()
+                }
+            }.getOrElse { emptyList() }
+        }.flatten()
     }
 
     override fun videoListSelector() = "ul.servers-list li.server--item"
 
-    private fun videosFromElement(document: Document): List<Video> {
-        val videoList = mutableListOf<Video>()
-        return try {
-            val scriptSelect = document.selectFirst("script:containsData(eval)")!!.data()
-            val serverPrefix =
-                scriptSelect.substringAfter("|net|cdn|amzn|").substringBefore("|rewind|icon|")
-            val sourceServer = "https://$serverPrefix.e-amzn-cdn.net"
-            val qualities = scriptSelect.substringAfter("|image|").substringBefore("|sources|")
-                .replace("||", "|").split("|")
-            qualities.forEachIndexed { i, q ->
-                if (i % 2 == 0) {
-                    val id = qualities[i + 1]
-                    val src = "$sourceServer/$id/v.mp4"
-                    val video = Video(src, "Main: $q", src)
-                    videoList.add(video)
-                }
-            }
-            videoList
-        } catch (e: Exception) {
-            videoList
-        }
-    }
-
     override fun List<Video>.sort(): List<Video> {
-        val quality = preferences.getString("preferred_quality", null)
-        if (quality != null) {
-            val newList = mutableListOf<Video>()
-            var preferred = 0
-            for (video in this) {
-                if (video.quality.contains(quality)) {
-                    newList.add(preferred, video)
-                    preferred++
-                } else {
-                    newList.add(video)
-                }
-            }
-            return newList
-        }
-        return this
+        val quality = preferences.getString(PREF_QUALITY_KEY, PREF_QUALITY_DEFAULT)!!
+        return sortedWith(
+            compareBy { it.quality.contains(quality) },
+        ).reversed()
     }
 
     override fun videoUrlParse(document: Document) = throw Exception("not used")
@@ -360,14 +338,32 @@ class Shahid4U : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // preferred quality settings
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
-        val videoQualityPref = ListPreference(screen.context).apply {
-            key = "preferred_quality"
-            title = "Preferred quality"
-            entries = arrayOf("1080p", "720p", "480p", "360p", "240p")
-            entryValues = arrayOf("1080", "720", "480", "360", "240")
-            setDefaultValue("1080")
-            summary = "%s"
+        val baseUrlPref = androidx.preference.EditTextPreference(screen.context).apply {
+            key = PREF_BASE_URL_KEY
+            title = PREF_BASE_URL_TITLE
+            summary = getPrefBaseUrl()
+            this.setDefaultValue(PREF_BASE_URL_DEFAULT)
+            dialogTitle = PREF_BASE_URL_DIALOG_TITLE
+            dialogMessage = PREF_BASE_URL_DIALOG_MESSAGE
 
+            setOnPreferenceChangeListener { _, newValue ->
+                try {
+                    val res = preferences.edit().putString(PREF_BASE_URL_KEY, newValue as String).commit()
+                    Toast.makeText(screen.context, "Restart Aniyomi to apply changes", Toast.LENGTH_LONG).show()
+                    res
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    false
+                }
+            }
+        }
+        val videoQualityPref = ListPreference(screen.context).apply {
+            key = PREF_QUALITY_KEY
+            title = PREF_QUALITY_TITLE
+            entries = PREF_QUALITY_ENTRIES
+            entryValues = PREF_QUALITY_ENTRIES.map { it.replace("p","") }.toTypedArray()
+            setDefaultValue(PREF_QUALITY_DEFAULT)
+            summary = "%s"
             setOnPreferenceChangeListener { _, newValue ->
                 val selected = newValue as String
                 val index = findIndexOfValue(selected)
@@ -375,6 +371,32 @@ class Shahid4U : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 preferences.edit().putString(key, entry).commit()
             }
         }
+        screen.addPreference(baseUrlPref)
         screen.addPreference(videoQualityPref)
+    }
+
+    private fun getPrefBaseUrl(): String = preferences.getString(PREF_BASE_URL_KEY, PREF_BASE_URL_DEFAULT)!!
+
+    // ============================= Utilities ===================================
+    private inline fun <A, B> Iterable<A>.parallelMap(crossinline f: suspend (A) -> B): List<B> =
+        runBlocking {
+            map { async(Dispatchers.Default) { f(it) } }.awaitAll()
+        }
+    companion object {
+        private const val PREF_QUALITY_KEY = "preferred_quality"
+        private const val PREF_QUALITY_TITLE = "Preferred quality"
+        private const val PREF_QUALITY_DEFAULT = "1080"
+        private val PREF_QUALITY_ENTRIES = arrayOf("1080p", "720p", "480p", "360p", "240p")
+
+        private const val PREF_BASE_URL_DEFAULT = "https://shhahed4u.com/"
+        private const val PREF_BASE_URL_KEY = "default_domain"
+        private const val PREF_BASE_URL_TITLE = "Enter default domain"
+        private const val PREF_BASE_URL_DIALOG_TITLE = "Default domain"
+        private const val PREF_BASE_URL_DIALOG_MESSAGE = "You can change the site domain from here"
+
+        private val VIDBOM_REGEX = Regex("(v[aie]d[bp][aoe]?m|myvii?d|govad|segavid|v[aei]{1,2}dshar[er]?)\\.(?:com|net|org|xyz)(?::\\d+)?/(?:embed[/-])?([A-Za-z0-9]+)")
+        private val UQLOAD_REGEX = Regex("(uqload|vudeo)\\.[ic]om?/(?:embed-)?([0-9a-zA-Z]+)")
+        private val STREAMWISH_REGEX = Regex("(embedwish|filelions)\\.(?:com|to|sbs)/(?:e/|v/|f/)?([0-9a-zA-Z]+)")
+
     }
 }
