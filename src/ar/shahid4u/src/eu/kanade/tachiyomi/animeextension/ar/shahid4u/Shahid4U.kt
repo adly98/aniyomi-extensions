@@ -95,75 +95,29 @@ class Shahid4U : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     // episodes
 
-    private fun seasonsNextPageSelector() = "div.allseasonstab ul li"
-
     override fun episodeListParse(response: Response): List<SEpisode> {
-        val episodes = mutableListOf<SEpisode>()
-        fun addEpisodeNew(url: String, type: String, title: String = "") {
-            val episode = SEpisode.create()
-            episode.setUrlWithoutDomain(url)
-            if (type == "assembly") {
-                episode.name = title.replace("فيلم", "").trim()
-            } else if (type == "movie") {
-                episode.name = "مشاهدة"
-            } else {
-                episode.name = title
+        val document = response.asJsoup()
+        val url = response.request.url.toString()
+        val episodes = document.select(episodeListSelector())
+        return when {
+            episodes.isNullOrEmpty() -> {
+                SEpisode.create().apply {
+                    setUrlWithoutDomain(url)
+                    name = "مشاهدة"
+                }.let(::listOf)
             }
-
-            episodes.add(episode)
-        }
-        fun addEpisodes(response: Response) {
-            val document = response.asJsoup()
-            val url = response.request.url.toString()
-            if (url.contains("assemblies")) {
-                for (movie in document.select(searchAnimeSelector())) {
-                    addEpisodeNew(
-                        movie.select("a.fullClick").attr("href") + "watch/",
-                        "assembly",
-                        movie.select("h3").text(),
-                    )
-                }
-                return
-            }
-            if (document.select("div.seasons--episodes").isNullOrEmpty()) {
-                // Movies
-                addEpisodeNew(url, "movie")
-            } else {
-                // Series
-                // look for what is wrong
-                for (season in document.select(seasonsNextPageSelector())) {
-                    val seasonNum = season.text()
-                    if (season.hasClass("active")) {
-                        // get episodes from page
-                        for (episode in document.select("ul.episodes-list li a")) {
-                            addEpisodeNew(
-                                episode.attr("href"),
-                                "series",
-                                seasonNum + " " + episode.text(),
-                            )
-                        }
-                    } else {
-                        // send request to get episodes
-                        val seasonData = season.attr("data-id")
-                        val refererHeaders = Headers.headersOf("referer", response.request.url.toString(), "x-requested-with", "XMLHttpRequest")
-                        val requestBody = FormBody.Builder().add("season", seasonData).build()
-                        val getEpisodes = client.newCall(POST("$baseUrl/wp-content/themes/Shahid4u-WP_HOME/Ajaxat/Single/Episodes.php", refererHeaders, requestBody)).execute().asJsoup()
-                        for (episode in getEpisodes.select("li a")) {
-                            addEpisodeNew(
-                                episode.attr("href"),
-                                "series",
-                                seasonNum + " " + episode.text(),
-                            )
-                        }
+            else -> {
+                episodes.map {
+                    SEpisode.create().apply {
+                        setUrlWithoutDomain(it.attr("href"))
+                        name = it.text()
                     }
-                }
+                }.toList()
             }
         }
-        addEpisodes(response)
-        return episodes
     }
 
-    override fun episodeListSelector() = "link[rel=canonical]"
+    override fun episodeListSelector() = "ul.episodes-list li a"
 
     override fun episodeFromElement(element: Element): SEpisode = throw Exception("not used")
 
@@ -298,9 +252,9 @@ class Shahid4U : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun latestUpdatesFromElement(element: Element): SAnime {
         val anime = SAnime.create()
-        anime.title = titleEdit(element.select("h3").text()).trim()
-        anime.thumbnail_url = element.select("a.image img").attr("data-image")
-        anime.setUrlWithoutDomain(element.select("a.fullClick").attr("href") + "watch/")
+        anime.title = titleEdit(element.select("a h3").text()).trim()
+        anime.thumbnail_url = element.select("a.image").attr("data-src")
+        anime.setUrlWithoutDomain(element.select("a.fullClick").attr("href").replace(Regex("episode|film"), "watch"))
         return anime
     }
 
