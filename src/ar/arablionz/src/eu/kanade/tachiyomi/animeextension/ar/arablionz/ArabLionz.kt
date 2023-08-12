@@ -6,9 +6,15 @@ import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
+import eu.kanade.tachiyomi.lib.mixdropextractor.MixDropExtractor
+import eu.kanade.tachiyomi.lib.okruextractor.OkruExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.util.asJsoup
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.runBlocking
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
@@ -111,6 +117,40 @@ class ArabLionz: ParsedAnimeHttpSource() {
     }
 
     // ============================ Video Links =============================
+
+    override fun videoListParse(response: Response): List<Video> {
+        fun videosFromUrl(url: String, host: String): List<Video> {
+            val doc = client.newCall(GET(url)).execute().asJsoup()
+            val script = doc.selectFirst("script:containsData(sources)")!!
+            val data = script.data().substringAfter("sources: [").substringBefore("],")
+            return data.split("file:\"").drop(1).map { source ->
+                val src = source.substringBefore("\"")
+                val qualityHost = host.replaceFirstChar(Char::uppercase)
+                var quality = source.substringAfter("label:\"").substringBefore("\"")
+                if (quality.length > 15) { quality = "480p" }
+                Video(src, "$qualityHost: $quality", src)
+            }
+        }
+        val watchId = response.asJsoup().select("div.WatchBtn").attr("data-id")
+        val newHeaders = headers.newBuilder()
+            .add("origin", baseUrl)
+            .add("referer", response.request.url.toString())
+            .add("x-requested-with", "XMLHttpRequest").build()
+        val watchServers = client.newCall(POST("$baseUrl/PostServersWatch/$watchId", headers = newHeaders)).execute().asJsoup()
+        return watchServers.select("ul li").parallelMap {
+            runCatching {
+                val urlIndex = it.attr("data-i")
+                val watchUrl = client.newCall(POST("$baseUrl/Embedder/$watchId/$urlIndex", headers = newHeaders)).execute().asJsoup()
+                val iframeUrl = watchUrl.select("iframe").attr("src")
+                when{
+                    VIDBOM_REGEX.containsMatchIn(iframeUrl) -> videosFromUrl(iframeUrl, VIDBOM_REGEX.find(iframeUrl)!!.groupValues[1])
+                    "ok" in iframeUrl -> OkruExtractor(client).videosFromUrl(iframeUrl)
+                    "mixdrop" in iframeUrl -> MixDropExtractor(client).videoFromUrl(iframeUrl)
+                    else -> emptyList()
+                }
+            }.getOrElse { emptyList() }
+        }.flatten()
+    }
     override fun videoFromElement(element: Element): Video {
         TODO("Not yet implemented")
     }
@@ -128,17 +168,15 @@ class ArabLionz: ParsedAnimeHttpSource() {
         TODO("Not yet implemented")
     }
 
-    override fun searchAnimeNextPageSelector(): String? {
-        TODO("Not yet implemented")
-    }
+    override fun searchAnimeParse(response: Response): AnimesPage = popularAnimeParse(response)
+
+    override fun searchAnimeNextPageSelector(): String = popularAnimeNextPageSelector()
 
     override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request {
-        TODO("Not yet implemented")
+        return GET("$baseUrl/search/$query/page/$page/")
     }
 
-    override fun searchAnimeSelector(): String {
-        TODO("Not yet implemented")
-    }
+    override fun searchAnimeSelector(): String = popularAnimeSelector()
 
     // =============================== Latest ===============================
     override fun latestUpdatesFromElement(element: Element): SAnime {
@@ -157,7 +195,11 @@ class ArabLionz: ParsedAnimeHttpSource() {
         TODO("Not yet implemented")
     }
 
+    private inline fun <A, B> Iterable<A>.parallelMap(crossinline f: suspend (A) -> B): List<B> =
+        runBlocking {
+            map { async(Dispatchers.Default) { f(it) } }.awaitAll()
+        }
     companion object {
-        const val PREFIX_SEARCH = "id:"
+        private val VIDBOM_REGEX = Regex("(v[aie]d[bp][aoe]?m|myvii?d|govad|segavid|v[aei]{1,2}dshar[er]?)\\.(?:com|net|org|xyz)(?::\\d+)?/(?:embed[/-])?([A-Za-z0-9]+).html")
     }
 }
