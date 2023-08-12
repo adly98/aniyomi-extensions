@@ -7,6 +7,7 @@ import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
+import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.util.asJsoup
 import okhttp3.Request
 import okhttp3.Response
@@ -51,17 +52,54 @@ class ArabLionz: ParsedAnimeHttpSource() {
     override fun popularAnimeSelector(): String = "div.Grid--ArabLionz div.Posts--Single--Box"
 
     // ============================== Episodes ==============================
+    override fun episodeListParse(response: Response): List<SEpisode> {
+        val document = response.asJsoup()
+        val episodes = mutableListOf<SEpisode>()
+        when{
+            document.select(seasonListSelector()).isNotEmpty() -> {
+                document.select(seasonListSelector()).forEach { season ->
+                    val newHeaders = headers.newBuilder()
+                        .add("origin", baseUrl)
+                        .add("referer", response.request.url.toString())
+                        .add("x-requested-with", "XMLHttpRequest").build()
+                    val seasonData = client.newCall(POST(season.attr("href"), headers = newHeaders)).execute().asJsoup()
+                    episodes.addAll(seasonData.select("a").map{ episodeFromElement(it) }.reversed())
+                }
+            }
+            document.select(episodeListSelector()).isNotEmpty() -> {
+                document.select(episodeListSelector()).forEach {
+                    episodes.add(episodeFromElement(it))
+                }
+            }
+            else -> {
+                episodes.add(SEpisode.create().apply {
+                    name = "مشاهدة"
+                    setUrlWithoutDomain(response.request.url.toString())
+                })
+            }
+        }
+        return episodes
+    }
     override fun episodeFromElement(element: Element): SEpisode {
-        TODO("Not yet implemented")
+        return SEpisode.create().apply {
+            name = element.text()
+            setUrlWithoutDomain(element.attr("href"))
+            episode_number = element.text().filter { it.isDigit() }.toFloat()
+        }
     }
 
-    override fun episodeListSelector(): String {
-        TODO("Not yet implemented")
-    }
+    private fun seasonListSelector(): String = "div.Setion--Title--mini ul li a"
+    override fun episodeListSelector(): String = "div.Episode--Lists a"
 
     // =========================== Anime Details ============================
     override fun animeDetailsParse(document: Document): SAnime {
-        TODO("Not yet implemented")
+        return SAnime.create().apply {
+            description = document.select("p.Singular--Story-P").text()
+            title = document.select("div.Pop--Actors:contains(الاسم الاصلى) ul li").text()
+            genre = document.select("div.Singular--Geners ul li a").joinToString(", "){ it.text() }
+            author = document.select("div.Pop--Actors:contains(الدولة) ul li").text()
+            status = SAnime.UNKNOWN
+        }
     }
 
     // ============================ Video Links =============================
