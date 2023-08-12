@@ -63,7 +63,14 @@ class ArabLionz: ParsedAnimeHttpSource() {
                         .add("referer", response.request.url.toString())
                         .add("x-requested-with", "XMLHttpRequest").build()
                     val seasonData = client.newCall(POST(season.attr("href"), headers = newHeaders)).execute().asJsoup()
-                    episodes.addAll(seasonData.select("a").map{ episodeFromElement(it) }.reversed())
+                    episodes.addAll(seasonData.select("a").map{ episode ->
+                        val seasonText = Regex("""(ا?ل?موسم\s.*?)\s""").find(season.select("span").text())
+                        SEpisode.create().apply {
+                            name = "${seasonText!!.groupValues[1]} ${episode.text()}"
+                            setUrlWithoutDomain(episode.attr("href"))
+                            episode_number = episode.text().filter { it.isDigit() }.toFloat()
+                        }
+                    })
                 }
             }
             document.select(episodeListSelector()).isNotEmpty() -> {
