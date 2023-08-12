@@ -1,0 +1,12 @@
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+
+ext {
+    extName = 'ArabLionz'
+    pkgNameSuffix = 'ar.arablionz'
+    extClass = '.ArabLionz'
+    extVersionCode = 1
+    libVersion = '13'
+}
+
+apply from: "$rootDir/common.gradle"
