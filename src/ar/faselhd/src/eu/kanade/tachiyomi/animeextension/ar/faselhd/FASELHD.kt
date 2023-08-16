@@ -45,8 +45,7 @@ class FASELHD : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             .add("Referer", baseUrl)
     }
 
-    // Popular Anime
-
+    // ============================== Popular ===============================
     override fun popularAnimeSelector(): String = "div#postList div.col-xl-2 a"
 
     override fun popularAnimeRequest(page: Int): Request = GET("$baseUrl/anime/page/$page")
@@ -55,14 +54,13 @@ class FASELHD : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val anime = SAnime.create()
         anime.setUrlWithoutDomain(element.attr("href"))
         anime.title = element.select("div.imgdiv-class img").attr("alt")
-        // anime.thumbnail_url = element.select("div.imgdiv-class img").attr("data-src")
-
+        anime.thumbnail_url = element.select("div.imgdiv-class img").attr("data-src")
         return anime
     }
 
     override fun popularAnimeNextPageSelector(): String = "ul.pagination li a.page-link:contains(›)"
 
-    // Episodes
+    // ============================== Episodes ==============================
     override fun episodeListSelector() = "div.epAll a"
 
     private fun seasonsNextPageSelector(seasonNumber: Int) = "div#seasonList div.col-xl-2:nth-child($seasonNumber)" // "div.List--Seasons--Episodes > a:nth-child($seasonNumber)"
@@ -108,7 +106,7 @@ class FASELHD : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return episode
     }
 
-    // Video urls
+    // ============================ Video Links =============================
 
     override fun videoListSelector() = throw UnsupportedOperationException("Not used.")
 
@@ -129,29 +127,17 @@ class FASELHD : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     override fun List<Video>.sort(): List<Video> {
-        val quality = preferences.getString("preferred_quality", null)
-        if (quality != null) {
-            val newList = mutableListOf<Video>()
-            var preferred = 0
-            for (video in this) {
-                if (video.quality.contains(quality)) {
-                    newList.add(preferred, video)
-                    preferred++
-                } else {
-                    newList.add(video)
-                }
-            }
-            return newList
-        }
-        return this
+        val quality = preferences.getString("preferred_quality", "1080")!!
+        return sortedWith(
+            compareBy { it.quality.contains(quality) },
+        ).reversed()
     }
 
     override fun videoFromElement(element: Element) = throw Exception("not used")
 
     override fun videoUrlParse(document: Document) = throw Exception("not used")
 
-    // search
-
+    // =============================== Search ===============================
     override fun searchAnimeFromElement(element: Element): SAnime {
         val anime = SAnime.create()
         anime.setUrlWithoutDomain(element.attr("href"))
@@ -165,15 +151,19 @@ class FASELHD : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun searchAnimeSelector(): String = "div#postList div.col-xl-2 a"
 
     override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request {
+        val filterList = if (filters.isEmpty()) getFilterList() else filters
+        val sectionFilter = filterList.find { it is SectionFilter } as SectionFilter
+        val categoryFilter = filterList.find { it is CategoryFilter } as CategoryFilter
+        val genreFilter = filterList.find { it is GenreFilter } as GenreFilter
         return if (query.isNotBlank()) {
             GET("$baseUrl/page/$page?s=$query", headers)
         } else {
             val url = "$baseUrl/".toHttpUrlOrNull()!!.newBuilder()
-            filters.forEach { filter ->
-                when (filter) {
-                    is GenreFilter -> url.addPathSegment(filter.toUriPart())
-                    else -> {}
-                }
+            if(sectionFilter.state != 0){
+                url.addPathSegment(sectionFilter.toUriPart())
+            } else {
+                url.addPathSegment(categoryFilter.toUriPart())
+                url.addPathSegment(genreFilter.toUriPart().lowercase())
             }
             url.addPathSegment("page")
             url.addPathSegment("$page")
@@ -181,8 +171,7 @@ class FASELHD : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }
     }
 
-    // Details
-
+    // =========================== Anime Details ============================
     override fun animeDetailsParse(document: Document): SAnime {
         val anime = SAnime.create()
         anime.title = document.select("div.title.h1").text()
@@ -195,7 +184,7 @@ class FASELHD : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         } else {
             cover
         }
-        anime.description = document.select("div.singleDesc p").text()
+        anime.description = document.select("div.singleDesc").text()
         anime.status = parseStatus(document.select("span:contains(حالة)").text().replace("حالة ", "").replace("المسلسل : ", ""))
         return anime
     }
@@ -208,8 +197,7 @@ class FASELHD : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }
     }
 
-    // Latest
-
+    // =============================== Latest ===============================
     override fun latestUpdatesNextPageSelector(): String = "ul.pagination li a.page-link:contains(›)"
 
     override fun latestUpdatesFromElement(element: Element): SAnime {
@@ -224,37 +212,60 @@ class FASELHD : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun latestUpdatesSelector(): String = "div#postList div.col-xl-2 a"
 
-    // Filters
+    // ============================ Filters =============================
 
     override fun getFilterList() = AnimeFilterList(
-        AnimeFilter.Header("NOTE: Ignored if using text search!"),
+        AnimeFilter.Header("هذا القسم يعمل لو كان البحث فارع"),
+        SectionFilter(),
         AnimeFilter.Separator(),
-        GenreFilter(getGenreList()),
+        AnimeFilter.Header("الفلتره تعمل فقط لو كان اقسام الموقع على 'اختر'"),
+        CategoryFilter(),
+        GenreFilter()
+    )
+    private class SectionFilter : PairFilter(
+        "اقسام الموقع",
+        arrayOf(
+            Pair("اختر", "none"),
+            Pair("جميع الافلام", "all-movies"),
+            Pair("افلام اجنبي", "movies"),
+            Pair("افلام مدبلجة", "dubbed-movies"),
+            Pair("افلام هندي", "hindi"),
+            Pair("افلام اسيوي", "asian-movies"),
+            Pair("افلام انمي", "anime-movies"),
+            Pair("الافلام الاعلي تصويتا", "movies_top_votes"),
+            Pair("الافلام الاعلي مشاهدة", "movies_top_views"),
+            Pair("الافلام الاعلي تقييما IMDB", "movies_top_imdb"),
+            Pair("جميع المسلسلات", "series"),
+            Pair("مسلسلات الأنمي", "anime"),
+            Pair("الاعلي تقييما IMDB", "series_top_imdb"),
+            Pair("المسلسلات القصيرة", "short_series"),
+            Pair("المسلسلات الاسيوية", "asian-series"),
+            Pair("المسلسلات الاعلي مشاهدة", "series_top_views"),
+            Pair("المسلسلات الاسيوية الاعلي مشاهدة", "asian_top_views"),
+            Pair("الانمي الاعلي مشاهدة", "anime_top_views"),
+        )
+    )
+    private class CategoryFilter : PairFilter(
+        "النوع",
+        arrayOf(
+            Pair("اختر", "none"),
+            Pair("افلام","movies-cats"),
+            Pair("مسلسلات","series_genres"),
+            Pair("انمى","anime-cats")
+        )
+    )
+    private class GenreFilter : SingleFilter(
+        "التصنيف",
+        arrayOf(
+            "Action", "Adventure", "Animation", "Western", "Sport", "Short", "Documentary", "Fantasy", "Sci-fi", "Romance", "Comedy", "Family", "Drama", "Thriller", "Crime", "Horror", "Biography"
+        ).sortedArray()
     )
 
-    private class GenreFilter(vals: Array<Pair<String, String>>) : UriPartFilter("تصنيف المسلسلات", vals)
-
-    private fun getGenreList() = arrayOf(
-        Pair("افلام انمي", "anime-movies"),
-        Pair("جميع الافلام", "all-movies"),
-        Pair("جوائز الأوسكار لهذا العام⭐", "oscars-winners"),
-        Pair("افلام اجنبي", "movies"),
-        Pair("افلام مدبلجة", "dubbed-movies"),
-        Pair("افلام هندي", "hindi"),
-        Pair("افلام اسيوي", "asian-movies"),
-        Pair("الاعلي مشاهدة", "movies_top_views"),
-        Pair("الافلام الاعلي تقييما IMDB", "movies_top_imdb"),
-        Pair("مسلسلات الأنمي", "anime"),
-        Pair("جميع المسلسلات", "series"),
-        Pair("الاعلي مشاهدة", "series_top_views"),
-        Pair("الاعلي تقييما IMDB", "series_top_imdb"),
-        Pair("المسلسلات القصيرة", "short_series"),
-        Pair("المسلسلات الاسيوية", "asian-series"),
-        Pair("المسلسلات الاسيوية الاعلي مشاهدة", "asian_top_views"),
-        Pair("الانمي الاعلي مشاهدة", "anime_top_views"),
-    )
-
-    open class UriPartFilter(displayName: String, private val vals: Array<Pair<String, String>>) :
+    open class SingleFilter(displayName: String, private val vals: Array<String>) :
+        AnimeFilter.Select<String>(displayName, vals) {
+        fun toUriPart() = vals[state]
+    }
+    open class PairFilter(displayName: String, private val vals: Array<Pair<String, String>>) :
         AnimeFilter.Select<String>(displayName, vals.map { it.first }.toTypedArray()) {
         fun toUriPart() = vals[state].second
     }

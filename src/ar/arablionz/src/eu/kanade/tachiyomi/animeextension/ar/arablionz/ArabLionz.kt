@@ -137,7 +137,7 @@ class ArabLionz: ParsedAnimeHttpSource() {
             .add("referer", response.request.url.toString())
             .add("x-requested-with", "XMLHttpRequest").build()
         val watchServers = client.newCall(POST("$baseUrl/PostServersWatch/$watchId", headers = newHeaders)).execute().asJsoup()
-        return watchServers.select("ul li").parallelMap {
+        return watchServers.select(videoListSelector()).parallelMap {
             runCatching {
                 val urlIndex = it.attr("data-i")
                 val watchUrl = client.newCall(POST("$baseUrl/Embedder/$watchId/$urlIndex", headers = newHeaders)).execute().asJsoup()
@@ -155,9 +155,7 @@ class ArabLionz: ParsedAnimeHttpSource() {
         TODO("Not yet implemented")
     }
 
-    override fun videoListSelector(): String {
-        TODO("Not yet implemented")
-    }
+    override fun videoListSelector(): String = "ul li"
 
     override fun videoUrlParse(document: Document): String {
         TODO("Not yet implemented")
