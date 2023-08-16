@@ -161,9 +161,11 @@ class FASELHD : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             val url = "$baseUrl/".toHttpUrlOrNull()!!.newBuilder()
             if(sectionFilter.state != 0){
                 url.addPathSegment(sectionFilter.toUriPart())
-            } else {
+            } else if(categoryFilter.state != 0) {
                 url.addPathSegment(categoryFilter.toUriPart())
                 url.addPathSegment(genreFilter.toUriPart().lowercase())
+            } else {
+                throw Exception("من فضلك اختر قسم او نوع")
             }
             url.addPathSegment("page")
             url.addPathSegment("$page")
