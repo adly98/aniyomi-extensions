@@ -176,7 +176,7 @@ class FASELHD : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // =========================== Anime Details ============================
     override fun animeDetailsParse(document: Document): SAnime {
         val anime = SAnime.create()
-        anime.title = document.select("div.title.h1").text()
+        anime.title = document.select("meta[itemprop=name]").attr("content")
         anime.genre = document.select("span:contains(تصنيف) > a, span:contains(مستوى) > a").joinToString(", ") { it.text() }
         // anime.thumbnail_url = document.select("div.posterImg img.poster").attr("src")
 
