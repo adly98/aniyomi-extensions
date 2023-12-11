@@ -3,12 +3,18 @@ package eu.kanade.tachiyomi.animeextension.pt.goanimes
 import eu.kanade.tachiyomi.animeextension.pt.goanimes.extractors.BloggerJWPlayerExtractor
 import eu.kanade.tachiyomi.animeextension.pt.goanimes.extractors.GoAnimesExtractor
 import eu.kanade.tachiyomi.animeextension.pt.goanimes.extractors.JsDecoder
+import eu.kanade.tachiyomi.animeextension.pt.goanimes.extractors.LinkfunBypasser
 import eu.kanade.tachiyomi.animeextension.pt.goanimes.extractors.PlaylistExtractor
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
+import eu.kanade.tachiyomi.lib.bloggerextractor.BloggerExtractor
 import eu.kanade.tachiyomi.multisrc.dooplay.DooPlay
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.runBlocking
 import okhttp3.Response
 import org.jsoup.nodes.Element
 
@@ -19,6 +25,9 @@ class GoAnimes : DooPlay(
 ) {
     // ============================== Popular ===============================
     override fun popularAnimeSelector() = "div#featured-titles article.item.tvshows > div.poster"
+
+    // =============================== Latest ===============================
+    override val latestUpdatesPath = "lancamentos"
 
     // ============================== Episodes ==============================
     override val seasonListSelector = "div#seasons > *"
@@ -31,9 +40,9 @@ class GoAnimes : DooPlay(
 
         // Episodes are listed at another page
         val url = season.attr("href")
-        return client.newCall(GET(url))
+        return client.newCall(GET(url, headers))
             .execute()
-            .asJsoup()
+            .use { it.asJsoup() }
             .let(::getSeasonEpisodes)
     }
 
@@ -60,20 +69,50 @@ class GoAnimes : DooPlay(
     override val prefQualityValues = arrayOf("240p", "360p", "480p", "720p", "1080p")
     override val prefQualityEntries = prefQualityValues
 
+    private val goanimesExtractor by lazy { GoAnimesExtractor(client, headers) }
+    private val bloggerExtractor by lazy { BloggerExtractor(client) }
+    private val linkfunBypasser by lazy { LinkfunBypasser(client) }
+
     override fun videoListParse(response: Response): List<Video> {
-        val document = response.asJsoup()
+        val document = response.use { it.asJsoup() }
         val players = document.select("ul#playeroptionsul li")
-        return players.flatMap(::getPlayerVideos)
+        return players.parallelCatchingFlatMap(::getPlayerVideos)
     }
 
     private fun getPlayerVideos(player: Element): List<Video> {
         val url = getPlayerUrl(player)
         return when {
-            "player5.goanimes.net" in url ->
-                GoAnimesExtractor(client).videosFromUrl(url)
+            "player5.goanimes.net" in url -> goanimesExtractor.videosFromUrl(url)
+            "https://gojopoolt" in url -> {
+                val headers = headers.newBuilder()
+                    .set("referer", url)
+                    .build()
+
+                val script = client.newCall(GET(url, headers)).execute()
+                    .use { it.body.string() }
+                    .let { JsDecoder.decodeScript(it, false) }
+
+                script.substringAfter("sources: [")
+                    .substringBefore(']')
+                    .split('{')
+                    .drop(1)
+                    .mapNotNull {
+                        val videoUrl = it.substringAfter("file: ")
+                            .substringBefore(", ")
+                            .trim('"', '\'', ' ')
+                            .ifBlank { return@mapNotNull null }
+
+                        val resolution = it.substringAfter("label: ", "")
+                            .substringAfter('"')
+                            .substringBefore('"')
+                            .ifBlank { "Default" }
+
+                        Video(videoUrl, "Gojopoolt - $resolution", videoUrl, headers)
+                    }
+            }
             listOf("/bloggerjwplayer", "/m3u8", "/multivideo").any { it in url } -> {
                 val script = client.newCall(GET(url)).execute()
-                    .body.string()
+                    .use { it.body.string() }
                     .let(JsDecoder::decodeScript)
                 when {
                     "/bloggerjwplayer" in url ->
@@ -84,10 +123,11 @@ class GoAnimes : DooPlay(
                         script.substringAfter("attr")
                             .substringAfter(" \"")
                             .substringBefore('"')
-                            .let { GoAnimesExtractor(client).videosFromUrl(it) }
+                            .let(goanimesExtractor::videosFromUrl)
                     else -> emptyList<Video>()
                 }
             }
+            "www.blogger.com" in url -> bloggerExtractor.videosFromUrl(url, headers)
             else -> emptyList<Video>()
         }
     }
@@ -96,14 +136,33 @@ class GoAnimes : DooPlay(
         val type = player.attr("data-type")
         val id = player.attr("data-post")
         val num = player.attr("data-nume")
-        return client.newCall(GET("$baseUrl/wp-json/dooplayer/v2/$id/$type/$num"))
+        val url = client.newCall(GET("$baseUrl/wp-json/dooplayer/v2/$id/$type/$num"))
             .execute()
-            .body.string()
+            .use { it.body.string() }
             .substringAfter("\"embed_url\":\"")
             .substringBefore("\",")
             .replace("\\", "")
+
+        return when {
+            "/protetorlinks/" in url -> {
+                val link = client.newCall(GET(url)).execute()
+                    .use { it.asJsoup() }
+                    .selectFirst("a[href]")!!.attr("href")
+
+                client.newCall(GET(link)).execute()
+                    .use(linkfunBypasser::getIframeUrl)
+            }
+            else -> url
+        }
     }
 
-    // =============================== Latest ===============================
-    override val latestUpdatesPath = "lancamentos"
+    // ============================= Utilities ==============================
+    private inline fun <A, B> Iterable<A>.parallelCatchingFlatMap(crossinline f: suspend (A) -> Iterable<B>): List<B> =
+        runBlocking {
+            map {
+                async(Dispatchers.Default) {
+                    runCatching { f(it) }.getOrElse { emptyList() }
+                }
+            }.awaitAll().flatten()
+        }
 }

@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.animeextension.pt.goanimes.extractors
 
+import android.util.Base64
 import kotlin.math.pow
 
 object JsDecoder {
@@ -24,7 +25,15 @@ object JsDecoder {
             }.joinToString("")
     }
 
-    fun decodeScript(script: String): String {
+    fun decodeScript(html: String, isB64: Boolean = true): String {
+        val script = if (isB64) {
+            html.substringAfter(";base64,")
+                .substringBefore('"')
+                .let { String(Base64.decode(it, Base64.DEFAULT)) }
+        } else {
+            html
+        }
+
         val regex = """\}\("(\w+)",.*?"(\w+)",(\d+),(\d+),.*?\)""".toRegex()
         return regex.find(script)
             ?.run {

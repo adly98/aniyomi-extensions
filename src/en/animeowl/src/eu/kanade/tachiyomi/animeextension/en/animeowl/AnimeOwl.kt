@@ -13,7 +13,6 @@ import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.lib.doodextractor.DoodExtractor
-import eu.kanade.tachiyomi.lib.streamsbextractor.StreamSBExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.util.asJsoup
@@ -47,7 +46,7 @@ class AnimeOwl : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val name = "AnimeOwl"
 
-    override val baseUrl by lazy { preferences.getString("preferred_domain", "https://animeowl.net")!! }
+    override val baseUrl = "https://anime-owl.net"
 
     override val lang = "en"
 
@@ -290,21 +289,6 @@ class AnimeOwl : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 }
             }
 
-        // StreamSB mirror:
-        document.select("div#list-server-more > ul > li.linkserver:contains(StreamSB)")
-            .firstOrNull()?.attr("data-video")
-            ?.let { link ->
-                StreamSBExtractor(client).videosFromUrl(link, headers).map {
-                    videoList.add(
-                        Video(
-                            it.url,
-                            it.quality + " $lang",
-                            it.videoUrl,
-                            headers = it.headers,
-                        ),
-                    )
-                }
-            }
         return videoList
     }
 
@@ -350,21 +334,6 @@ class AnimeOwl : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
-        val domainPref = ListPreference(screen.context).apply {
-            key = "preferred_domain"
-            title = "Preferred domain (requires app restart)"
-            entries = arrayOf("animeowl.net")
-            entryValues = arrayOf("https://animeowl.net")
-            setDefaultValue("https://animeowl.net")
-            summary = "%s"
-
-            setOnPreferenceChangeListener { _, newValue ->
-                val selected = newValue as String
-                val index = findIndexOfValue(selected)
-                val entry = entryValues[index] as String
-                preferences.edit().putString(key, entry).commit()
-            }
-        }
         val videoQualityPref = ListPreference(screen.context).apply {
             key = "preferred_quality"
             title = "Preferred quality"
@@ -395,7 +364,6 @@ class AnimeOwl : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 preferences.edit().putString(key, entry).commit()
             }
         }
-        screen.addPreference(domainPref)
         screen.addPreference(videoQualityPref)
         screen.addPreference(videoLangPref)
     }

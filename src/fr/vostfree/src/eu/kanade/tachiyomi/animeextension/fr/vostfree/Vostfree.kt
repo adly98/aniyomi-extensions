@@ -4,7 +4,6 @@ import android.app.Application
 import android.content.SharedPreferences
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
-import eu.kanade.tachiyomi.animeextension.fr.vostfree.extractors.VudeoExtractor
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilter
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
@@ -14,8 +13,8 @@ import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.lib.doodextractor.DoodExtractor
-import eu.kanade.tachiyomi.lib.mytvextractor.MytvExtractor
 import eu.kanade.tachiyomi.lib.okruextractor.OkruExtractor
+import eu.kanade.tachiyomi.lib.vudeoextractor.VudeoExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.util.asJsoup
@@ -72,7 +71,7 @@ class Vostfree : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     episode_number = "1".toFloat()
                     name = "Film"
                 }
-                episode.url = ("?episode:${0}/${response.request.url}")
+                episode.url = "?episode:0/${response.request.url}"
                 episodes.add(episode)
             } else {
                 val episode = SEpisode.create().apply {
@@ -102,15 +101,12 @@ class Vostfree : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         allPlayerIds.select("div").forEach {
             val server = it.text()
             if (server.lowercase() == "vudeo") {
-                val headers = headers.newBuilder()
-                    .set("referer", "https://vudeo.io/")
-                    .build()
                 val playerId = it.attr("id")
                 val url = document.select("div#player-tabs div.tab-blocks div.tab-content div div#content_$playerId").text()
-                try {
-                    val video = VudeoExtractor(client).videosFromUrl(url, headers)
+                runCatching {
+                    val video = VudeoExtractor(client).videosFromUrl(url)
                     videoList.addAll(video)
-                } catch (e: Exception) {}
+                }
             }
             if (server.lowercase() == "ok") {
                 val playerId = it.attr("id")
@@ -125,12 +121,6 @@ class Vostfree : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 if (video != null) {
                     videoList.add(video)
                 }
-            }
-            if (server.lowercase() == "mytv" || server.lowercase() == "stream") {
-                val playerId = it.attr("id")
-                val url = "https://www.myvi.tv/embed/" + document.select("div#player-tabs div.tab-blocks div.tab-content div div#content_$playerId").text()
-                val video = MytvExtractor(client).videosFromUrl(url)
-                videoList.addAll(video)
             }
         }
 
@@ -274,8 +264,8 @@ class Vostfree : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val videoQualityPref = ListPreference(screen.context).apply {
             key = "preferred_quality"
             title = "Preferred quality"
-            entries = arrayOf("Vudeo", "Mytv", "Doodstream")
-            entryValues = arrayOf("Vudeo", "Mytv", "Doodstream")
+            entries = arrayOf("Vudeo", "Doodstream")
+            entryValues = arrayOf("Vudeo", "Doodstream")
             setDefaultValue("Vudeo")
             summary = "%s"
 

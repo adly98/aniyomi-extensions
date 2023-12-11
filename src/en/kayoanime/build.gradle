@@ -6,8 +6,12 @@ ext {
     extName = 'Kayoanime'
     pkgNameSuffix = 'en.kayoanime'
     extClass = '.Kayoanime'
-    extVersionCode = 7
+    extVersionCode = 10
     libVersion = '13'
+}
+
+dependencies {
+    implementation(project(':lib-googledrive-extractor'))
 }
 
 apply from: "$rootDir/common.gradle"

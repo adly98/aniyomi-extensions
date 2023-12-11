@@ -9,7 +9,12 @@ ext {
     pkgNameSuffix = 'pt.hentaistube'
     extClass = '.HentaisTube'
     extVersionCode = 1
+    libVersion = '13'
     containsNsfw = true
+}
+
+dependencies {
+    implementation(project(':lib-blogger-extractor'))
 }
 
 apply from: "$rootDir/common.gradle"

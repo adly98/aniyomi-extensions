@@ -6,14 +6,13 @@ import android.widget.Toast
 import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
-import eu.kanade.tachiyomi.AppInfo
+import eu.kanade.tachiyomi.animeextension.BuildConfig
 import eu.kanade.tachiyomi.animeextension.en.multimovies.extractors.AutoEmbedExtractor
 import eu.kanade.tachiyomi.animeextension.en.multimovies.extractors.MultimoviesCloudExtractor
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.lib.streamlareextractor.StreamlareExtractor
-import eu.kanade.tachiyomi.lib.streamsbextractor.StreamSBExtractor
 import eu.kanade.tachiyomi.multisrc.dooplay.DooPlay
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
@@ -29,11 +28,11 @@ import uy.kohesive.injekt.api.get
 class Multimovies : DooPlay(
     "en",
     "Multimovies",
-    "https://multimovies.shop",
+    "https://multimovies.live",
 ) {
     override val client = network.cloudflareClient
 
-    private val defaultBaseUrl = "https://multimovies.shop"
+    private val defaultBaseUrl = "https://multimovies.live"
 
     override val baseUrl by lazy { getPrefBaseUrl() }
 
@@ -83,22 +82,7 @@ class Multimovies : DooPlay(
     private fun getPlayerVideos(player: Element): List<Video> {
         if (player.attr("data-nume") == "trailer") return emptyList()
         val url = getPlayerUrl(player)
-        val streamSbServers = listOf(
-            "sbembed.com", "sbembed1.com", "sbplay.org",
-            "sbvideo.net", "streamsb.net", "sbplay.one",
-            "cloudemb.com", "playersb.com", "tubesb.com",
-            "sbplay1.com", "embedsb.com", "watchsb.com",
-            "sbplay2.com", "japopav.tv", "viewsb.com",
-            "sbfast", "sbfull.com", "javplaya.com",
-            "ssbstream.net", "p1ayerjavseen.com", "sbthe.com",
-            "sbchill.com", "sblongvu.com", "sbanh.com",
-            "sblanh.com", "sbhight.com", "sbbrisk.com",
-            "sbspeed.com", "multimovies.website",
-        )
         return when {
-            streamSbServers.any { it in url } ->
-                StreamSBExtractor(client).videosFromUrl(url, headers = headers, prefix = "[multimovies]")
-
             url.contains(baseUrl.toHttpUrl().host, true) ->
                 MultimoviesCloudExtractor(client).videosFromUrl(url)
             url.contains("autoembed.to") || url.contains("2embed.to") -> {
@@ -215,7 +199,7 @@ class Multimovies : DooPlay(
     companion object {
         private const val RESTART_ANIYOMI = "Restart Aniyomi to apply new setting."
         private const val BASE_URL_PREF_TITLE = "Override BaseUrl"
-        private val BASE_URL_PREF = "overrideBaseUrl_v${AppInfo.getVersionName()}"
+        private val BASE_URL_PREF = "overrideBaseUrl_v${BuildConfig.VERSION_CODE}"
         private const val BASE_URL_PREF_SUMMARY = "For temporary uses. Updating the extension will erase this setting."
 
         private const val PREF_SERVER_KEY = "preferred_server"

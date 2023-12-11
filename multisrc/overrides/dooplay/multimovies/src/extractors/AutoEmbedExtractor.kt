@@ -685,7 +685,6 @@ import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.lib.doodextractor.DoodExtractor
 import eu.kanade.tachiyomi.lib.mixdropextractor.MixDropExtractor
 import eu.kanade.tachiyomi.lib.streamlareextractor.StreamlareExtractor
-import eu.kanade.tachiyomi.lib.streamsbextractor.StreamSBExtractor
 import eu.kanade.tachiyomi.lib.voeextractor.VoeExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
@@ -758,9 +757,6 @@ class AutoEmbedExtractor(private val client: OkHttpClient) {
                 val videoUrl = server.url
 
                 when {
-                    videoUrl.contains("streamsb") -> {
-                        StreamSBExtractor(client).videosFromUrl(videoUrl, headers = headers, prefix = prefix)
-                    }
                     videoUrl.contains("streamlare") -> {
                         StreamlareExtractor(client).videosFromUrl(videoUrl, prefix = prefix)
                     }
@@ -773,9 +769,6 @@ class AutoEmbedExtractor(private val client: OkHttpClient) {
                     }
                     videoUrl.contains("rabbitstream") -> {
                         RabbitStreamExtractor(client).videosFromUrl(videoUrl, headers = videoHeaders, prefix = prefix)
-                    }
-                    videoUrl.contains("mixdrop") -> {
-                        MixDropExtractor(client).videoFromUrl(videoUrl, prefix = prefix)
                     }
                     videoUrl.contains("https://dood") -> {
                         DoodExtractor(client).videoFromUrl(videoUrl, server.name, false)
@@ -867,7 +860,7 @@ class AutoEmbedExtractor(private val client: OkHttpClient) {
     private fun getCaptchaToken(url: String, key: String): String? {
         return runCatching {
             val httpUrl = url.toHttpUrl()
-            val pureDomain = (httpUrl.scheme + "://" + httpUrl.host + ":443")
+            val pureDomain = httpUrl.scheme + "://" + httpUrl.host + ":443"
             val domain = Base64.encodeToString(pureDomain.encodeToByteArray(), Base64.DEFAULT)
                 .replace("\n", "")
                 .replace("=", ".")

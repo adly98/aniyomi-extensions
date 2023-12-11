@@ -6,8 +6,12 @@ ext {
     extName = 'Ripcrabbyanime'
     pkgNameSuffix = 'en.ripcrabbyanime'
     extClass = '.Ripcrabbyanime'
-    extVersionCode = 6
+    extVersionCode = 10
     libVersion = '13'
+}
+
+dependencies {
+    implementation(project(':lib-googledrive-extractor'))
 }
 
 apply from: "$rootDir/common.gradle"

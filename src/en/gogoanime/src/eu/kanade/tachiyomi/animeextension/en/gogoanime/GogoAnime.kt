@@ -1,62 +1,61 @@
 package eu.kanade.tachiyomi.animeextension.en.gogoanime
 
 import android.app.Application
-import android.content.SharedPreferences
+import android.widget.Toast
 import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
 import androidx.preference.MultiSelectListPreference
 import androidx.preference.PreferenceScreen
-import eu.kanade.tachiyomi.animeextension.en.gogoanime.extractors.GogoCdnExtractor
+import eu.kanade.tachiyomi.animeextension.BuildConfig
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
-import eu.kanade.tachiyomi.animesource.model.AnimeFilter
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.lib.doodextractor.DoodExtractor
+import eu.kanade.tachiyomi.lib.gogostreamextractor.GogoStreamExtractor
 import eu.kanade.tachiyomi.lib.mp4uploadextractor.Mp4uploadExtractor
-import eu.kanade.tachiyomi.lib.streamsbextractor.StreamSBExtractor
+import eu.kanade.tachiyomi.lib.streamwishextractor.StreamWishExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.ExperimentalSerializationApi
-import kotlinx.serialization.json.Json
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import uy.kohesive.injekt.injectLazy
 import java.lang.Exception
 
-@ExperimentalSerializationApi
 class GogoAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val name = "Gogoanime"
 
-    override val baseUrl by lazy { preferences.getString(PREF_DOMAIN_KEY, PREF_DOMAIN_DEFAULT)!! }
+    override val baseUrl by lazy {
+        preferences.getString(PREF_DOMAIN_KEY, PREF_DOMAIN_DEFAULT).orEmpty()
+            .trim().ifBlank { PREF_DOMAIN_DEFAULT }
+    }
 
     override val lang = "en"
 
     override val supportsLatest = true
 
-    override val client: OkHttpClient = network.cloudflareClient
+    override val client = network.cloudflareClient
 
-    private val json: Json by injectLazy()
+    override fun headersBuilder() = super.headersBuilder()
+        .add("Origin", baseUrl)
+        .add("Referer", "$baseUrl/")
 
-    private val preferences: SharedPreferences by lazy {
+    private val preferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
     }
 
     // ============================== Popular ===============================
-
-    override fun popularAnimeRequest(page: Int): Request = GET("$baseUrl/popular.html?page=$page")
+    override fun popularAnimeRequest(page: Int): Request = GET("$baseUrl/popular.html?page=$page", headers)
 
     override fun popularAnimeSelector(): String = "div.img a"
 
@@ -69,35 +68,30 @@ class GogoAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun popularAnimeNextPageSelector(): String = "ul.pagination-list li:last-child:not(.selected)"
 
     // =============================== Latest ===============================
+    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/home.html?page=$page", headers)
 
-    override fun latestUpdatesRequest(page: Int): Request =
-        GET("https://ajax.gogo-load.com/ajax/page-recent-release-ongoing.html?page=$page&type=1", headers)
+    override fun latestUpdatesSelector(): String = "div.img a"
 
-    override fun latestUpdatesSelector(): String = "div.added_series_body.popular li a:has(div)"
-
-    override fun latestUpdatesFromElement(element: Element): SAnime = SAnime.create().apply {
-        setUrlWithoutDomain(element.attr("abs:href"))
-        thumbnail_url = element.select("div.thumbnail-popular").attr("style")
-            .substringAfter("background: url('").substringBefore("');")
+    override fun latestUpdatesFromElement(element: Element) = SAnime.create().apply {
+        thumbnail_url = element.selectFirst("img")?.attr("src")
         title = element.attr("title")
+        val slug = element.attr("href").substringAfter(baseUrl)
+            .trimStart('/')
+            .substringBefore("-episode-")
+        setUrlWithoutDomain("/category/$slug")
     }
 
     override fun latestUpdatesNextPageSelector(): String = popularAnimeNextPageSelector()
 
     // =============================== Search ===============================
-
     override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request {
-        val filterList = if (filters.isEmpty()) getFilterList() else filters
-        val genreFilter = filterList.find { it is GenreFilter } as GenreFilter
-        val recentFilter = filterList.find { it is RecentFilter } as RecentFilter
-        val seasonFilter = filterList.find { it is SeasonFilter } as SeasonFilter
+        val params = GogoAnimeFilters.getSearchParameters(filters)
 
         return when {
-            query.isNotBlank() -> GET("$baseUrl/search.html?keyword=$query&page=$page", headers)
-            genreFilter.state != 0 -> GET("$baseUrl/genre/${genreFilter.toUriPart()}?page=$page")
-            recentFilter.state != 0 -> GET("https://ajax.gogo-load.com/ajax/page-recent-release.html?page=$page&type=${recentFilter.toUriPart()}")
-            seasonFilter.state != 0 -> GET("$baseUrl/${seasonFilter.toUriPart()}?page=$page", headers)
-            else -> GET("$baseUrl/popular.html?page=$page")
+            params.genre.isNotEmpty() -> GET("$baseUrl/genre/${params.genre}?page=$page", headers)
+            params.recent.isNotEmpty() -> GET("$AJAX_URL/page-recent-release.html?page=$page&type=${params.recent}", headers)
+            params.season.isNotEmpty() -> GET("$baseUrl/${params.season}?page=$page", headers)
+            else -> GET("$baseUrl/filter.html?keyword=$query&${params.filter}&page=$page", headers)
         }
     }
 
@@ -107,38 +101,39 @@ class GogoAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun searchAnimeNextPageSelector(): String = popularAnimeNextPageSelector()
 
+    // ============================== Filters ===============================
+    override fun getFilterList(): AnimeFilterList = GogoAnimeFilters.FILTER_LIST
+
     // =========================== Anime Details ============================
-
     override fun animeDetailsParse(document: Document): SAnime {
-        return SAnime.create().apply {
-            title = document.select("div.anime_info_body_bg h1").text()
-            genre = document.select("p.type:eq(5) a").joinToString("") { it.text() }
-            description = document.selectFirst("p.type:eq(4)")!!.ownText()
-            status = parseStatus(document.select("p.type:eq(7) a").text())
+        val infoDocument = document.selectFirst("div.anime-info a[href]")?.let {
+            client.newCall(GET(it.absUrl("href"), headers)).execute().asJsoup()
+        } ?: document
 
-            // add alternative name to anime description
-            val altName = "Other name(s): "
-            document.selectFirst("p.type:eq(8)")?.ownText()?.let {
-                if (it.isBlank().not()) {
-                    description = when {
-                        description.isNullOrBlank() -> altName + it
-                        else -> description + "\n\n$altName" + it
-                    }
+        return SAnime.create().apply {
+            title = infoDocument.selectFirst("div.anime_info_body_bg > h1")!!.text()
+            genre = infoDocument.getInfo("Genre:")
+            status = parseStatus(infoDocument.getInfo("Status:").orEmpty())
+
+            description = buildString {
+                infoDocument.getInfo("Plot Summary:")?.also(::append)
+
+                // add alternative name to anime description
+                infoDocument.getInfo("Other name:")?.also {
+                    if (isNotBlank()) append("\n\n")
+                    append("Other name(s): $it")
                 }
             }
         }
     }
 
     // ============================== Episodes ==============================
-
     private fun episodesRequest(totalEpisodes: String, id: String): List<SEpisode> {
-        val request = GET("https://ajax.gogo-load.com/ajax/load-list-episode?ep_start=0&ep_end=$totalEpisodes&id=$id", headers)
+        val request = GET("$AJAX_URL/load-list-episode?ep_start=0&ep_end=$totalEpisodes&id=$id", headers)
         val epResponse = client.newCall(request).execute()
         val document = epResponse.asJsoup()
-        return document.select("a").map { episodeFromElement(it) }
+        return document.select("a").map(::episodeFromElement)
     }
-
-    override fun episodeListSelector() = "ul#episode_page li a"
 
     override fun episodeListParse(response: Response): List<SEpisode> {
         val document = response.asJsoup()
@@ -146,6 +141,8 @@ class GogoAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val id = document.select("input#movie_id").attr("value")
         return episodesRequest(totalEpisodes, id)
     }
+
+    override fun episodeListSelector() = "ul#episode_page li a"
 
     override fun episodeFromElement(element: Element): SEpisode {
         val ep = element.selectFirst("div.name")!!.ownText().substringAfter(" ")
@@ -157,46 +154,37 @@ class GogoAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     // ============================ Video Links =============================
+    private val gogoExtractor by lazy { GogoStreamExtractor(client) }
+    private val streamwishExtractor by lazy { StreamWishExtractor(client, headers) }
+    private val doodExtractor by lazy { DoodExtractor(client) }
+    private val mp4uploadExtractor by lazy { Mp4uploadExtractor(client) }
 
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
-        val gogoExtractor = GogoCdnExtractor(client, json)
         val hosterSelection = preferences.getStringSet(PREF_HOSTER_KEY, PREF_HOSTER_DEFAULT)!!
 
-        val videoList = mutableListOf<Video>()
+        return document.select("div.anime_muti_link > ul > li").parallelCatchingFlatMap { server ->
+            val className = server.className()
+            if (!hosterSelection.contains(className)) return@parallelCatchingFlatMap emptyList()
+            val serverUrl = server.selectFirst("a")
+                ?.attr("abs:data-video")
+                ?: return@parallelCatchingFlatMap emptyList()
 
-        videoList.addAll(
-            document.select("div.anime_muti_link > ul > li").parallelMap { server ->
-                runCatching {
-                    val className = server.className()
-                    if (!hosterSelection.contains(className)) return@runCatching null
-                    val serverUrl = server.selectFirst("a")
-                        ?.attr("data-video")
-                        ?.replace(Regex("^//"), "https://")
-                        ?: return@runCatching null
-                    when (className) {
-                        "anime" -> {
-                            gogoExtractor.videosFromUrl(serverUrl)
-                        }
-                        "vidcdn" -> {
-                            gogoExtractor.videosFromUrl(serverUrl)
-                        }
-                        "streamsb" -> {
-                            StreamSBExtractor(client).videosFromUrl(serverUrl, headers)
-                        }
-                        "doodstream" -> {
-                            DoodExtractor(client).videosFromUrl(serverUrl)
-                        }
-                        "mp4upload" -> {
-                            Mp4uploadExtractor(client).videosFromUrl(serverUrl, headers)
-                        }
-                        else -> null
-                    }
-                }.getOrNull()
-            }.filterNotNull().flatten(),
-        )
+            getHosterVideos(className, serverUrl)
+        }
+    }
 
-        return videoList.sort()
+    private fun getHosterVideos(className: String, serverUrl: String): List<Video> {
+        return when (className) {
+            "anime", "vidcdn" -> gogoExtractor.videosFromUrl(serverUrl)
+            "streamwish" -> streamwishExtractor.videosFromUrl(serverUrl)
+            "doodstream" -> doodExtractor.videosFromUrl(serverUrl)
+            "mp4upload" -> mp4uploadExtractor.videosFromUrl(serverUrl, headers)
+            "filelions" -> {
+                streamwishExtractor.videosFromUrl(serverUrl, videoNameGen = { quality -> "FileLions - $quality" })
+            }
+            else -> emptyList()
+        }
     }
 
     override fun videoListSelector() = throw Exception("not used")
@@ -206,12 +194,18 @@ class GogoAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun videoUrlParse(document: Document) = throw Exception("not used")
 
     // ============================= Utilities ==============================
+    private fun Document.getInfo(text: String): String? {
+        val base = selectFirst("p.type:has(span:containsOwn($text))") ?: return null
+        return base.select("a").eachText().joinToString("")
+            .ifBlank { base.ownText() }
+            .takeUnless(String::isBlank)
+    }
 
     override fun List<Video>.sort(): List<Video> {
         val quality = preferences.getString(PREF_QUALITY_KEY, PREF_QUALITY_DEFAULT)!!
         val server = preferences.getString(PREF_SERVER_KEY, PREF_SERVER_DEFAULT)!!
 
-        return this.sortedWith(
+        return sortedWith(
             compareBy(
                 { it.quality.contains(quality) },
                 { Regex("""(\d+)p""").find(it.quality)?.groupValues?.get(1)?.toIntOrNull() ?: 0 },
@@ -228,64 +222,80 @@ class GogoAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }
     }
 
-    // From Dopebox
-    private fun <A, B> Iterable<A>.parallelMap(f: suspend (A) -> B): List<B> =
+    private inline fun <A, B> Iterable<A>.parallelCatchingFlatMap(crossinline f: suspend (A) -> Iterable<B>): List<B> =
         runBlocking {
-            map { async(Dispatchers.Default) { f(it) } }.awaitAll()
+            map {
+                async(Dispatchers.Default) {
+                    runCatching { f(it) }.getOrElse { emptyList() }
+                }
+            }.awaitAll().flatten()
         }
 
     companion object {
+        private const val AJAX_URL = "https://ajax.gogo-load.com/ajax"
+
         private val HOSTERS = arrayOf(
             "Gogostream",
             "Vidstreaming",
             "Doodstream",
-            "StreamSB",
+            "StreamWish",
             "Mp4upload",
+            "FileLions",
         )
         private val HOSTERS_NAMES = arrayOf( // Names that appears in the gogo html
             "vidcdn",
             "anime",
             "doodstream",
-            "streamsb",
+            "streamwish",
             "mp4upload",
+            "filelions",
         )
 
-        private const val PREF_DOMAIN_KEY = "preferred_domain_name"
+        private const val PREF_DOMAIN_KEY = "preferred_domain_name_v${BuildConfig.VERSION_CODE}"
         private const val PREF_DOMAIN_TITLE = "Override BaseUrl"
-        private const val PREF_DOMAIN_DEFAULT = "https://gogoanime.hu"
+        private const val PREF_DOMAIN_DEFAULT = "https://anitaku.to"
+        private const val PREF_DOMAIN_SUMMARY = "For temporary uses. Updating the extension will erase this setting."
+        private const val PREF_DOMAIN_DIALOG_MESSAGE = "Default: $PREF_DOMAIN_DEFAULT"
 
         private const val PREF_QUALITY_KEY = "preferred_quality"
+        private const val PREF_QUALITY_TITLE = "Preferred quality"
         private const val PREF_QUALITY_DEFAULT = "1080"
+        private val PREF_QUALITY_ENTRIES = arrayOf("1080p", "720p", "480p", "360p")
+        private val PREF_QUALITY_VALUES = arrayOf("1080", "720", "480", "360")
 
         private const val PREF_SERVER_KEY = "preferred_server"
+        private const val PREF_SERVER_TITLE = "Preferred server"
         private const val PREF_SERVER_DEFAULT = "Gogostream"
 
         private const val PREF_HOSTER_KEY = "hoster_selection"
+        private const val PREF_HOSTER_TITLE = "Enable/Disable Hosts"
         private val PREF_HOSTER_DEFAULT = HOSTERS_NAMES.toSet()
     }
 
     // ============================== Settings ==============================
-
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
         EditTextPreference(screen.context).apply {
             key = PREF_DOMAIN_KEY
             title = PREF_DOMAIN_TITLE
-            summary = "Override default domain (requires app restart)"
             dialogTitle = PREF_DOMAIN_TITLE
-            dialogMessage = "Default: $PREF_DOMAIN_DEFAULT"
+            dialogMessage = PREF_DOMAIN_DIALOG_MESSAGE
             setDefaultValue(PREF_DOMAIN_DEFAULT)
+            summary = PREF_DOMAIN_SUMMARY
 
             setOnPreferenceChangeListener { _, newValue ->
-                val newValueString = newValue as String
-                preferences.edit().putString(key, newValueString.trim()).commit()
+                runCatching {
+                    val value = (newValue as String).trim().ifBlank { PREF_DOMAIN_DEFAULT }
+                    Toast.makeText(screen.context, "Restart Aniyomi to apply new setting.", Toast.LENGTH_LONG).show()
+                    preferences.edit().putString(key, value).commit()
+                }.getOrDefault(false)
             }
         }.also(screen::addPreference)
 
         ListPreference(screen.context).apply {
             key = PREF_QUALITY_KEY
-            title = "Preferred quality"
-            entries = arrayOf("1080p", "720p", "480p", "360p")
-            entryValues = arrayOf("1080", "720", "480", "360")
+            title = PREF_QUALITY_TITLE
+            entries = PREF_QUALITY_ENTRIES
+            entryValues = PREF_QUALITY_VALUES
             setDefaultValue(PREF_QUALITY_DEFAULT)
             summary = "%s"
 
@@ -299,7 +309,7 @@ class GogoAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
         ListPreference(screen.context).apply {
             key = PREF_SERVER_KEY
-            title = "Preferred server"
+            title = PREF_SERVER_TITLE
             entries = HOSTERS
             entryValues = HOSTERS
             setDefaultValue(PREF_SERVER_DEFAULT)
@@ -315,7 +325,7 @@ class GogoAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
         MultiSelectListPreference(screen.context).apply {
             key = PREF_HOSTER_KEY
-            title = "Enable/Disable Hosts"
+            title = PREF_HOSTER_TITLE
             entries = HOSTERS
             entryValues = HOSTERS_NAMES
             setDefaultValue(PREF_HOSTER_DEFAULT)
@@ -325,160 +335,5 @@ class GogoAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 preferences.edit().putStringSet(key, newValue as Set<String>).commit()
             }
         }.also(screen::addPreference)
-    }
-
-    // ============================== Filters ===============================
-
-    override fun getFilterList(): AnimeFilterList = AnimeFilterList(
-        AnimeFilter.Header("Text search ignores filters"),
-        GenreFilter(),
-        RecentFilter(),
-        SeasonFilter(),
-    )
-
-    private class GenreFilter : UriPartFilter(
-        "Genres",
-        arrayOf(
-            Pair("<select>", ""),
-            Pair("Action", "action"),
-            Pair("Adult Cast", "adult-cast"),
-            Pair("Adventure", "adventure"),
-            Pair("Anthropomorphic", "anthropomorphic"),
-            Pair("Avant Garde", "avant-garde"),
-            Pair("Boys Love", "shounen-ai"),
-            Pair("Cars", "cars"),
-            Pair("CGDCT", "cgdct"),
-            Pair("Childcare", "childcare"),
-            Pair("Comedy", "comedy"),
-            Pair("Comic", "comic"),
-            Pair("Crime", "crime"),
-            Pair("Crossdressing", "crossdressing"),
-            Pair("Delinquents", "delinquents"),
-            Pair("Dementia", "dementia"),
-            Pair("Demons", "demons"),
-            Pair("Detective", "detective"),
-            Pair("Drama", "drama"),
-            Pair("Dub", "dub"),
-            Pair("Ecchi", "ecchi"),
-            Pair("Erotica", "erotica"),
-            Pair("Family", "family"),
-            Pair("Fantasy", "fantasy"),
-            Pair("Gag Humor", "gag-humor"),
-            Pair("Game", "game"),
-            Pair("Gender Bender", "gender-bender"),
-            Pair("Gore", "gore"),
-            Pair("Gourmet", "gourmet"),
-            Pair("Harem", "harem"),
-            Pair("Hentai", "hentai"),
-            Pair("High Stakes Game", "high-stakes-game"),
-            Pair("Historical", "historical"),
-            Pair("Horror", "horror"),
-            Pair("Isekai", "isekai"),
-            Pair("Iyashikei", "iyashikei"),
-            Pair("Josei", "josei"),
-            Pair("Kids", "kids"),
-            Pair("Magic", "magic"),
-            Pair("Magical Sex Shift", "magical-sex-shift"),
-            Pair("Mahou Shoujo", "mahou-shoujo"),
-            Pair("Martial Arts", "martial-arts"),
-            Pair("Mecha", "mecha"),
-            Pair("Medical", "medical"),
-            Pair("Military", "military"),
-            Pair("Music", "music"),
-            Pair("Mystery", "mystery"),
-            Pair("Mythology", "mythology"),
-            Pair("Organized Crime", "organized-crime"),
-            Pair("Parody", "parody"),
-            Pair("Performing Arts", "performing-arts"),
-            Pair("Pets", "pets"),
-            Pair("Police", "police"),
-            Pair("Psychological", "psychological"),
-            Pair("Reincarnation", "reincarnation"),
-            Pair("Romance", "romance"),
-            Pair("Romantic Subtext", "romantic-subtext"),
-            Pair("Samurai", "samurai"),
-            Pair("School", "school"),
-            Pair("Sci-Fi", "sci-fi"),
-            Pair("Seinen", "seinen"),
-            Pair("Shoujo", "shoujo"),
-            Pair("Shoujo Ai", "shoujo-ai"),
-            Pair("Shounen", "shounen"),
-            Pair("Shounen Ai", "shounen-ai"),
-            Pair("Slice of Life", "slice-of-life"),
-            Pair("Space", "space"),
-            Pair("Sports", "sports"),
-            Pair("Strategy Game", "strategy-game"),
-            Pair("Super Power", "super-power"),
-            Pair("Supernatural", "supernatural"),
-            Pair("Suspense", "suspense"),
-            Pair("Team Sports", "team-sports"),
-            Pair("Thriller", "thriller"),
-            Pair("Time Travel", "time-travel"),
-            Pair("Vampire", "vampire"),
-            Pair("Work Life", "work-life"),
-            Pair("Workplace", "workplace"),
-            Pair("Yaoi", "yaoi"),
-            Pair("Yuri", "yuri"),
-        ),
-    )
-
-    private class RecentFilter : UriPartFilter(
-        "Recent Episodes",
-        arrayOf(
-            Pair("<select>", ""),
-            Pair("Recent Release", "1"),
-            Pair("Recent Dub", "2"),
-            Pair("Recent Chinese", "3"),
-        ),
-    )
-
-    private class SeasonFilter : UriPartFilter(
-        "Season",
-        arrayOf(
-            Pair("<select>", ""),
-            Pair("Latest season", "new-season.html"),
-            Pair("Winter 2023", "sub-category/winter-2023-anime"),
-            Pair("Fall 2022", "sub-category/fall-2022-anime"),
-            Pair("Summer 2022", "sub-category/summer-2022-anime"),
-            Pair("Spring 2022", "sub-category/spring-2022-anime"),
-            Pair("Winter 2022", "sub-category/winter-2022-anime"),
-            Pair("Fall 2021", "sub-category/fall-2021-anime"),
-            Pair("Summer 2021", "sub-category/summer-2021-anime"),
-            Pair("Spring 2021", "sub-category/spring-2021-anime"),
-            Pair("Winter 2021", "sub-category/winter-2021-anime"),
-            Pair("Fall 2020", "sub-category/fall-2020-anime"),
-            Pair("Summer 2020", "sub-category/summer-2020-anime"),
-            Pair("Spring 2020", "sub-category/spring-2020-anime"),
-            Pair("Winter 2020", "sub-category/winter-2020-anime"),
-            Pair("Fall 2019", "sub-category/fall-2019-anime"),
-            Pair("Summer 2019", "sub-category/summer-2019-anime"),
-            Pair("Spring 2019", "sub-category/spring-2019-anime"),
-            Pair("Winter 2019", "sub-category/winter-2019-anime"),
-            Pair("Fall 2018", "sub-category/fall-2018-anime"),
-            Pair("Summer 2018", "sub-category/summer-2018-anime"),
-            Pair("Spring 2018", "sub-category/spring-2018-anime"),
-            Pair("Winter 2018", "sub-category/winter-2018-anime"),
-            Pair("Fall 2017", "sub-category/fall-2017-anime"),
-            Pair("Summer 2017", "sub-category/summer-2017-anime"),
-            Pair("Spring 2017", "sub-category/spring-2017-anime"),
-            Pair("Winter 2017", "sub-category/winter-2017-anime"),
-            Pair("Fall 2016", "sub-category/fall-2016-anime"),
-            Pair("Summer 2016", "sub-category/summer-2016-anime"),
-            Pair("Spring 2016", "sub-category/spring-2016-anime"),
-            Pair("Winter 2016", "sub-category/winter-2016-anime"),
-            Pair("Fall 2015", "sub-category/fall-2015-anime"),
-            Pair("Summer 2015", "sub-category/summer-2015-anime"),
-            Pair("Spring 2015", "sub-category/spring-2015-anime"),
-            Pair("Winter 2015", "sub-category/winter-2015-anime"),
-            Pair("Fall 2014", "sub-category/fall-2014-anime"),
-            Pair("Summer 2014", "sub-category/summer-2014-anime"),
-            Pair("Spring 2014", "sub-category/spring-2014-anime"),
-            Pair("Winter 2014", "sub-category/winter-2014-anime"),
-        ),
-    )
-
-    private open class UriPartFilter(displayName: String, val vals: Array<Pair<String, String>>) :
-        AnimeFilter.Select<String>(displayName, vals.map { it.first }.toTypedArray()) {
-        fun toUriPart() = vals[state].second
     }
 }

@@ -5,7 +5,6 @@ import androidx.preference.MultiSelectListPreference
 import androidx.preference.PreferenceScreen
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.lib.doodextractor.DoodExtractor
-import eu.kanade.tachiyomi.lib.streamsbextractor.StreamSBExtractor
 import eu.kanade.tachiyomi.lib.voeextractor.VoeExtractor
 import eu.kanade.tachiyomi.multisrc.dooplay.DooPlay
 import eu.kanade.tachiyomi.network.POST
@@ -23,14 +22,14 @@ class Kinoking : DooPlay(
         private const val PREF_HOSTER_KEY = "preferred_hoster"
         private const val PREF_HOSTER_TITLE = "Standard-Hoster"
         private const val PREF_HOSTER_DEFAULT = "https://dood"
-        private val PREF_HOSTER_ENTRIES = arrayOf("Doodstream", "StreamSB", "Voe")
-        private val PREF_HOSTER_VALUES = arrayOf("https://dood", "https://watchsb.com", "https://voe.sx")
+        private val PREF_HOSTER_ENTRIES = arrayOf("Doodstream", "Voe", "Filehosted")
+        private val PREF_HOSTER_VALUES = arrayOf("https://dood", "https://voe.sx", "https://fs1.filehosted")
 
         private const val PREF_HOSTER_SELECTION_KEY = "hoster_selection"
         private const val PREF_HOSTER_SELECTION_TITLE = "Hoster auswählen"
         private val PREF_HOSTER_SELECTION_ENTRIES = PREF_HOSTER_ENTRIES
-        private val PREF_HOSTER_SELECTION_VALUES = arrayOf("dood", "watchsb", "voe")
-        private val PREF_HOSTER_SELECTION_DEFAULT = PREF_HOSTER_SELECTION_ENTRIES.toSet()
+        private val PREF_HOSTER_SELECTION_VALUES = arrayOf("dood", "voe", "filehosted")
+        private val PREF_HOSTER_SELECTION_DEFAULT = PREF_HOSTER_SELECTION_VALUES.toSet()
     }
 
     override val videoSortPrefKey = PREF_HOSTER_KEY
@@ -40,6 +39,9 @@ class Kinoking : DooPlay(
 
     // ============================== Popular ===============================
     override fun popularAnimeSelector(): String = "div#featured-titles div.poster"
+
+    // =============================== Latest ===============================
+    override fun latestUpdatesNextPageSelector(): String = "#nextpagination"
 
     // ============================== Episodes ==============================
     // Little workaround to show season episode names like the original extension
@@ -52,19 +54,16 @@ class Kinoking : DooPlay(
             name = name.replace("$substring -", "$newString :")
         }
 
-    // =============================== Latest ===============================
-    override fun latestUpdatesNextPageSelector(): String = "#nextpagination"
-
     // ============================ Video Links =============================
     override fun videoListParse(response: Response): List<Video> {
         val players = response.use { it.asJsoup().select("li.dooplay_player_option") }
         val hosterSelection = preferences.getStringSet(PREF_HOSTER_SELECTION_KEY, PREF_HOSTER_SELECTION_DEFAULT)!!
-        return players.mapNotNull { player ->
+        return players.flatMap { player ->
             runCatching {
                 val link = getPlayerUrl(player)
                 getPlayerVideos(link, player, hosterSelection)
-            }.getOrDefault(emptyList<Video>())
-        }.flatten()
+            }.getOrElse { emptyList() }
+        }
     }
 
     private fun getPlayerUrl(player: Element): String {
@@ -84,36 +83,30 @@ class Kinoking : DooPlay(
             }
     }
 
-    private fun getPlayerVideos(link: String, element: Element, hosterSelection: Set<String>): List<Video>? {
+    private val doodExtractor by lazy { DoodExtractor(client) }
+    private val voeExtractor by lazy { VoeExtractor(client) }
+
+    private fun getPlayerVideos(link: String, element: Element, hosterSelection: Set<String>): List<Video> {
         return when {
-            link.contains("https://watchsb") || link.contains("https://viewsb") && hosterSelection.contains("watchsb") -> {
-                if (element.select("span.flag img").attr("data-src").contains("/en.")) {
-                    val lang = "Englisch"
-                    StreamSBExtractor(client).videosFromUrl(link, headers, suffix = lang)
-                } else {
-                    val lang = "Deutsch"
-                    StreamSBExtractor(client).videosFromUrl(link, headers, lang)
-                }
-            }
-            link.contains("https://dood.") || link.contains("https://doodstream.") && hosterSelection.contains("dood") -> {
+            link.contains("https://dood") && hosterSelection.contains("dood") -> {
                 val quality = "Doodstream"
                 val redirect = !link.contains("https://doodstream")
-                DoodExtractor(client).videoFromUrl(link, quality, redirect)
-                    ?.let(::listOf)
+                doodExtractor.videosFromUrl(link, quality, redirect)
             }
-            link.contains("https://voe.sx") && hosterSelection.contains("voe") == true -> {
-                val quality = "Voe"
-                VoeExtractor(client).videoFromUrl(link, quality)
-                    ?.let(::listOf)
+            link.contains("https://voe.sx") && hosterSelection.contains("voe") -> {
+                voeExtractor.videosFromUrl(link, "Voe")
+            }
+            link.contains("filehosted") && hosterSelection.contains("filehosted") -> {
+                listOf(Video(link, "Filehosted", link))
             }
             else -> null
-        }
+        }.orEmpty()
     }
 
     // ============================== Settings ==============================
     @Suppress("UNCHECKED_CAST")
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
-        val hosterPref = ListPreference(screen.context).apply {
+        ListPreference(screen.context).apply {
             key = PREF_HOSTER_KEY
             title = PREF_HOSTER_TITLE
             entries = PREF_HOSTER_ENTRIES
@@ -127,8 +120,9 @@ class Kinoking : DooPlay(
                 val entry = entryValues[index] as String
                 preferences.edit().putString(key, entry).commit()
             }
-        }
-        val subSelection = MultiSelectListPreference(screen.context).apply {
+        }.also(screen::addPreference)
+
+        MultiSelectListPreference(screen.context).apply {
             key = PREF_HOSTER_SELECTION_KEY
             title = PREF_HOSTER_SELECTION_TITLE
             entries = PREF_HOSTER_SELECTION_ENTRIES
@@ -136,10 +130,9 @@ class Kinoking : DooPlay(
             setDefaultValue(PREF_HOSTER_SELECTION_DEFAULT)
 
             setOnPreferenceChangeListener { _, newValue ->
+                @Suppress("UNCHECKED_CAST")
                 preferences.edit().putStringSet(key, newValue as Set<String>).commit()
             }
-        }
-        screen.addPreference(hosterPref)
-        screen.addPreference(subSelection)
+        }.also(screen::addPreference)
     }
 }

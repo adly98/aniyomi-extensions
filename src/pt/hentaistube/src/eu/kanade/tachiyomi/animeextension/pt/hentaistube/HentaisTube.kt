@@ -6,7 +6,6 @@ import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
 import eu.kanade.tachiyomi.animeextension.pt.hentaistube.HentaisTubeFilters.applyFilterParams
 import eu.kanade.tachiyomi.animeextension.pt.hentaistube.dto.ItemsListDto
-import eu.kanade.tachiyomi.animeextension.pt.hentaistube.extractors.BloggerExtractor
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.AnimesPage
@@ -14,6 +13,7 @@ import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
+import eu.kanade.tachiyomi.lib.bloggerextractor.BloggerExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.asObservableSuccess
 import eu.kanade.tachiyomi.util.asJsoup
@@ -21,7 +21,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import okhttp3.Request
 import okhttp3.Response
@@ -58,10 +57,10 @@ class HentaisTube : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun popularAnimeSelector() = "ul.ul_sidebar > li"
 
     override fun popularAnimeFromElement(element: Element) = SAnime.create().apply {
-        thumbnail_url = element.selectFirst("img")!!.attr("src")
-        element.selectFirst("div.rt a.series")!!.also {
-            setUrlWithoutDomain(it.attr("href"))
-            title = it.text().substringBefore(" - Episódios")
+        thumbnail_url = element.selectFirst("img")?.attr("src")
+        element.selectFirst("div.rt a.series")!!.run {
+            setUrlWithoutDomain(attr("href"))
+            title = text().substringBefore(" - Episódios")
         }
     }
 
@@ -75,7 +74,7 @@ class HentaisTube : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun latestUpdatesFromElement(element: Element) = SAnime.create().apply {
         setUrlWithoutDomain(element.attr("href").substringBeforeLast("-") + "s")
         title = element.attr("title")
-        thumbnail_url = element.selectFirst("img")!!.attr("src")
+        thumbnail_url = element.selectFirst("img")?.attr("src")
     }
 
     override fun latestUpdatesNextPageSelector() = popularAnimeNextPageSelector()
@@ -145,7 +144,7 @@ class HentaisTube : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun animeDetailsParse(document: Document) = SAnime.create().apply {
         setUrlWithoutDomain(document.location())
         val infos = document.selectFirst("div#anime")!!
-        thumbnail_url = infos.selectFirst("img")!!.attr("src")
+        thumbnail_url = infos.selectFirst("img")?.attr("src")
         title = infos.getInfo("Hentai:")
         genre = infos.getInfo("Tags")
         artist = infos.getInfo("Estúdio")
@@ -165,14 +164,16 @@ class HentaisTube : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     // ============================ Video Links =============================
     override fun videoListParse(response: Response): List<Video> {
-        return response.asJsoup().select(videoListSelector()).parallelMap {
+        return response.use { it.asJsoup() }.select(videoListSelector()).parallelMap {
             runCatching {
                 client.newCall(GET(it.attr("src"), headers)).execute().use { res ->
-                    extractVideosFromIframe(res.asJsoup())
+                    extractVideosFromIframe(res.use { it.asJsoup() })
                 }
             }.getOrElse { emptyList() }
         }.flatten()
     }
+
+    private val bloggerExtractor by lazy { BloggerExtractor(client) }
 
     private fun extractVideosFromIframe(iframe: Document): List<Video> {
         val url = iframe.location()
@@ -185,11 +186,11 @@ class HentaisTube : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             }
             url.contains("/index.php") -> {
                 val bloggerUrl = iframe.selectFirst("iframe")!!.attr("src")
-                BloggerExtractor(client).videosFromUrl(bloggerUrl, headers)
+                bloggerExtractor.videosFromUrl(bloggerUrl, headers)
             }
             url.contains("/player.php") -> {
                 val ahref = iframe.selectFirst("a")!!.attr("href")
-                val internal = client.newCall(GET(ahref, headers)).execute().asJsoup()
+                val internal = client.newCall(GET(ahref, headers)).execute().use { it.asJsoup() }
                 val videoUrl = internal.selectFirst("video > source")!!.attr("src")
                 listOf(Video(videoUrl, "Alternativo", videoUrl, headers))
             }

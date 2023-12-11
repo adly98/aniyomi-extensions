@@ -3,9 +3,10 @@ package eu.kanade.tachiyomi.animeextension.all.lmanime
 import androidx.preference.ListPreference
 import androidx.preference.MultiSelectListPreference
 import androidx.preference.PreferenceScreen
-import eu.kanade.tachiyomi.animeextension.all.lmanime.extractors.DailymotionExtractor
 import eu.kanade.tachiyomi.animesource.model.Video
-import eu.kanade.tachiyomi.lib.okruextractor.OkruExtractor
+import eu.kanade.tachiyomi.lib.dailymotionextractor.DailymotionExtractor
+import eu.kanade.tachiyomi.lib.mp4uploadextractor.Mp4uploadExtractor
+import eu.kanade.tachiyomi.lib.streamwishextractor.StreamWishExtractor
 import eu.kanade.tachiyomi.multisrc.animestream.AnimeStream
 import eu.kanade.tachiyomi.util.asJsoup
 import okhttp3.Response
@@ -20,7 +21,7 @@ class LMAnime : AnimeStream(
     override val prefQualityEntries = prefQualityValues
 
     override fun videoListParse(response: Response): List<Video> {
-        val items = response.asJsoup().select(videoListSelector())
+        val items = response.use { it.asJsoup() }.select(videoListSelector())
         val allowed = preferences.getStringSet(PREF_ALLOWED_LANGS_KEY, PREF_ALLOWED_LANGS_DEFAULT)!!
         return items
             .filter { element ->
@@ -30,16 +31,20 @@ class LMAnime : AnimeStream(
                 val language = it.text().substringBefore(" ")
                 val url = getHosterUrl(it)
                 getVideoList(url, language)
-            }.flatten()
+            }.flatten().ifEmpty { throw Exception("Empty video list!") }
     }
 
+    private val streamwishExtractor by lazy { StreamWishExtractor(client, headers) }
+    private val dailyExtractor by lazy { DailymotionExtractor(client, headers) }
+    private val mp4uploadExtractor by lazy { Mp4uploadExtractor(client) }
+
     override fun getVideoList(url: String, name: String): List<Video> {
-        val prefix = "$name -"
+        val prefix = "($name) - "
         return when {
-            "ok.ru" in url ->
-                OkruExtractor(client).videosFromUrl(url, prefix)
-            "dailymotion.com" in url ->
-                DailymotionExtractor(client).videosFromUrl(url, "Dailymotion ($name)")
+            "dailymotion" in url -> dailyExtractor.videosFromUrl(url, "Dailymotion ($name)")
+            "mp4upload" in url -> mp4uploadExtractor.videosFromUrl(url, headers, "$prefix")
+            "filelions" in url -> streamwishExtractor.videosFromUrl(url, "StreamWish ($name)")
+
             else -> emptyList()
         }
     }
@@ -48,7 +53,8 @@ class LMAnime : AnimeStream(
     @Suppress("UNCHECKED_CAST")
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
         super.setupPreferenceScreen(screen) // Quality preferences
-        val langPref = ListPreference(screen.context).apply {
+
+        ListPreference(screen.context).apply {
             key = PREF_LANG_KEY
             title = PREF_LANG_TITLE
             entries = PREF_LANG_ENTRIES
@@ -61,9 +67,9 @@ class LMAnime : AnimeStream(
                 val entry = entryValues[index] as String
                 preferences.edit().putString(key, entry).commit()
             }
-        }
+        }.also(screen::addPreference)
 
-        val allowedPref = MultiSelectListPreference(screen.context).apply {
+        MultiSelectListPreference(screen.context).apply {
             key = PREF_ALLOWED_LANGS_KEY
             title = PREF_ALLOWED_LANGS_TITLE
             entries = PREF_ALLOWED_LANGS_ENTRIES
@@ -73,10 +79,7 @@ class LMAnime : AnimeStream(
             setOnPreferenceChangeListener { _, newValue ->
                 preferences.edit().putStringSet(key, newValue as Set<String>).commit()
             }
-        }
-
-        screen.addPreference(langPref)
-        screen.addPreference(allowedPref)
+        }.also(screen::addPreference)
     }
 
     // ============================= Utilities ==============================

@@ -3,13 +3,13 @@ package eu.kanade.tachiyomi.animeextension.es.animeonlineninja
 import androidx.preference.CheckBoxPreference
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
-import eu.kanade.tachiyomi.animeextension.es.animeonlineninja.extractors.UploadExtractor
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.lib.doodextractor.DoodExtractor
+import eu.kanade.tachiyomi.lib.filemoonextractor.FilemoonExtractor
 import eu.kanade.tachiyomi.lib.mixdropextractor.MixDropExtractor
-import eu.kanade.tachiyomi.lib.streamsbextractor.StreamSBExtractor
 import eu.kanade.tachiyomi.lib.streamtapeextractor.StreamTapeExtractor
+import eu.kanade.tachiyomi.lib.uqloadextractor.UqloadExtractor
 import eu.kanade.tachiyomi.multisrc.dooplay.DooPlay
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
@@ -22,12 +22,13 @@ import uy.kohesive.injekt.api.get
 class AnimeOnlineNinja : DooPlay(
     "es",
     "AnimeOnline.Ninja",
-    "https://www1.animeonline.ninja",
+    "https://ww3.animeonline.ninja",
 ) {
     override val client by lazy {
         if (preferences.getBoolean(PREF_VRF_INTERCEPT_KEY, PREF_VRF_INTERCEPT_DEFAULT)) {
-            network.cloudflareClient
-                .newBuilder().addInterceptor(VrfInterceptor()).build()
+            network.cloudflareClient.newBuilder()
+                .addInterceptor(VrfInterceptor())
+                .build()
         } else {
             network.cloudflareClient
         }
@@ -110,23 +111,28 @@ class AnimeOnlineNinja : DooPlay(
         }
     }
 
+    private val filemoonExtractor by lazy { FilemoonExtractor(client) }
+    private val doodExtractor by lazy { DoodExtractor(client) }
+    private val streamTapeExtractor by lazy { StreamTapeExtractor(client) }
+    private val mixDropExtractor by lazy { MixDropExtractor(client) }
+    private val uqloadExtractor by lazy { UqloadExtractor(client) }
+
     private fun extractVideos(url: String, lang: String): List<Video> {
         return when {
             "saidochesto.top" in url || "MULTISERVER" in lang.uppercase() ->
                 extractFromMulti(url)
+            "filemoon" in url ->
+                filemoonExtractor.videosFromUrl(url, "$lang Filemoon - ", headers)
             "dood" in url ->
-                DoodExtractor(client).videoFromUrl(url, "$lang DoodStream", false)
+                doodExtractor.videoFromUrl(url, "$lang DoodStream", false)
                     ?.let(::listOf)
-            "sb" in url ->
-                StreamSBExtractor(client).videosFromUrl(url, headers, lang)
             "streamtape" in url ->
-                StreamTapeExtractor(client).videoFromUrl(url, "$lang StreamTape")
+                streamTapeExtractor.videoFromUrl(url, "$lang StreamTape")
                     ?.let(::listOf)
             "mixdrop" in url ->
-                MixDropExtractor(client).videoFromUrl(url, lang)
+                mixDropExtractor.videoFromUrl(url, lang)
             "uqload" in url ->
-                UploadExtractor(client).videoFromUrl(url, headers, lang)
-                    ?.let(::listOf)
+                uqloadExtractor.videosFromUrl(url)
             "wolfstream" in url -> {
                 client.newCall(GET(url, headers)).execute()
                     .use { it.asJsoup() }

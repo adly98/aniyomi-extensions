@@ -1,11 +1,12 @@
 apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
+apply plugin: 'kotlinx-serialization'
 
 ext {
     extName = 'AnimeFLV'
     pkgNameSuffix = 'es.animeflv'
     extClass = '.AnimeFlv'
-    extVersionCode = 46
+    extVersionCode = 51
     libVersion = '13'
 }
 
@@ -13,8 +14,8 @@ dependencies {
     implementation(project(':lib-yourupload-extractor'))
     implementation(project(':lib-streamtape-extractor'))
     implementation(project(':lib-okru-extractor'))
-    implementation(project(':lib-streamsb-extractor'))
     implementation(project(':lib-dood-extractor'))
+    implementation(project(':lib-streamwish-extractor'))
 }
 
 apply from: "$rootDir/common.gradle"

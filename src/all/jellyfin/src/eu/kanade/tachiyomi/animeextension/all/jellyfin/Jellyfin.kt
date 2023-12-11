@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.animeextension.all.jellyfin
 
+import android.annotation.SuppressLint
 import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
@@ -22,7 +23,6 @@ import eu.kanade.tachiyomi.network.asObservableSuccess
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import okhttp3.Dns
@@ -35,12 +35,16 @@ import rx.Observable
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
+import java.security.cert.X509Certificate
+import javax.net.ssl.SSLContext
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
 import kotlin.math.ceil
 import kotlin.math.floor
 
-class Jellyfin : ConfigurableAnimeSource, AnimeHttpSource() {
+class Jellyfin(private val suffix: String) : ConfigurableAnimeSource, AnimeHttpSource() {
 
-    override val name = "Jellyfin"
+    override val name = "Jellyfin$suffix"
 
     override val lang = "all"
 
@@ -48,11 +52,43 @@ class Jellyfin : ConfigurableAnimeSource, AnimeHttpSource() {
 
     private val json: Json by injectLazy()
 
-    override val client: OkHttpClient =
-        network.client
-            .newBuilder()
+    private fun getUnsafeOkHttpClient(): OkHttpClient {
+        // Create a trust manager that does not validate certificate chains
+        val trustAllCerts = arrayOf<TrustManager>(
+            @SuppressLint("CustomX509TrustManager")
+            object : X509TrustManager {
+                @SuppressLint("TrustAllX509TrustManager")
+                override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {
+                }
+
+                @SuppressLint("TrustAllX509TrustManager")
+                override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {
+                }
+
+                override fun getAcceptedIssuers() = arrayOf<X509Certificate>()
+            },
+        )
+
+        // Install the all-trusting trust manager
+        val sslContext = SSLContext.getInstance("SSL")
+        sslContext.init(null, trustAllCerts, java.security.SecureRandom())
+        // Create an ssl socket factory with our all-trusting manager
+        val sslSocketFactory = sslContext.socketFactory
+
+        return network.client.newBuilder()
+            .sslSocketFactory(sslSocketFactory, trustAllCerts[0] as X509TrustManager)
+            .hostnameVerifier { _, _ -> true }.build()
+    }
+
+    override val client by lazy {
+        if (preferences.getBoolean("preferred_trust_all_certs", false)) {
+            getUnsafeOkHttpClient()
+        } else {
+            network.client
+        }.newBuilder()
             .dns(Dns.SYSTEM)
             .build()
+    }
 
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
@@ -108,23 +144,21 @@ class Jellyfin : ConfigurableAnimeSource, AnimeHttpSource() {
     }
 
     override fun popularAnimeRequest(page: Int): Request {
-        if (parentId.isEmpty()) {
-            throw Exception("Select library in the extension settings.")
-        }
+        require(parentId.isNotEmpty()) { "Select library in the extension settings." }
         val startIndex = (page - 1) * 20
 
-        val url = "$baseUrl/Users/$userId/Items".toHttpUrl().newBuilder()
-
-        url.addQueryParameter("api_key", apiKey)
-        url.addQueryParameter("StartIndex", startIndex.toString())
-        url.addQueryParameter("Limit", "20")
-        url.addQueryParameter("Recursive", "true")
-        url.addQueryParameter("SortBy", "SortName")
-        url.addQueryParameter("SortOrder", "Ascending")
-        url.addQueryParameter("includeItemTypes", "Movie,Series,Season,BoxSet")
-        url.addQueryParameter("ImageTypeLimit", "1")
-        url.addQueryParameter("ParentId", parentId)
-        url.addQueryParameter("EnableImageTypes", "Primary")
+        val url = "$baseUrl/Users/$userId/Items".toHttpUrl().newBuilder().apply {
+            addQueryParameter("api_key", apiKey)
+            addQueryParameter("StartIndex", startIndex.toString())
+            addQueryParameter("Limit", "20")
+            addQueryParameter("Recursive", "true")
+            addQueryParameter("SortBy", "SortName")
+            addQueryParameter("SortOrder", "Ascending")
+            addQueryParameter("includeItemTypes", "Movie,Season,BoxSet")
+            addQueryParameter("ImageTypeLimit", "1")
+            addQueryParameter("ParentId", parentId)
+            addQueryParameter("EnableImageTypes", "Primary")
+        }
 
         return GET(url.toString())
     }
@@ -150,24 +184,21 @@ class Jellyfin : ConfigurableAnimeSource, AnimeHttpSource() {
     }
 
     override fun latestUpdatesRequest(page: Int): Request {
-        if (parentId.isEmpty()) {
-            throw Exception("Select library in the extension settings.")
-        }
-
+        require(parentId.isNotEmpty()) { "Select library in the extension settings." }
         val startIndex = (page - 1) * 20
 
-        val url = "$baseUrl/Users/$userId/Items".toHttpUrl().newBuilder()
-
-        url.addQueryParameter("api_key", apiKey)
-        url.addQueryParameter("StartIndex", startIndex.toString())
-        url.addQueryParameter("Limit", "20")
-        url.addQueryParameter("Recursive", "true")
-        url.addQueryParameter("SortBy", "DateCreated,SortName")
-        url.addQueryParameter("SortOrder", "Descending")
-        url.addQueryParameter("includeItemTypes", "Movie,Series,Season,BoxSet")
-        url.addQueryParameter("ImageTypeLimit", "1")
-        url.addQueryParameter("ParentId", parentId)
-        url.addQueryParameter("EnableImageTypes", "Primary")
+        val url = "$baseUrl/Users/$userId/Items".toHttpUrl().newBuilder().apply {
+            addQueryParameter("api_key", apiKey)
+            addQueryParameter("StartIndex", startIndex.toString())
+            addQueryParameter("Limit", "20")
+            addQueryParameter("Recursive", "true")
+            addQueryParameter("SortBy", "DateCreated,SortName")
+            addQueryParameter("SortOrder", "Descending")
+            addQueryParameter("includeItemTypes", "Movie,Season,BoxSet")
+            addQueryParameter("ImageTypeLimit", "1")
+            addQueryParameter("ParentId", parentId)
+            addQueryParameter("EnableImageTypes", "Primary")
+        }
 
         return GET(url.toString())
     }
@@ -181,51 +212,62 @@ class Jellyfin : ConfigurableAnimeSource, AnimeHttpSource() {
     override fun searchAnimeParse(response: Response) = throw Exception("Not used")
 
     override fun fetchSearchAnime(page: Int, query: String, filters: AnimeFilterList): Observable<AnimesPage> {
-        if (parentId.isEmpty()) {
-            throw Exception("Select library in the extension settings.")
-        }
-
-        val animeList = mutableListOf<SAnime>()
+        require(parentId.isNotEmpty()) { "Select library in the extension settings." }
         val startIndex = (page - 1) * 5
 
-        val url = "$baseUrl/Users/$userId/Items".toHttpUrl().newBuilder()
+        val url = "$baseUrl/Users/$userId/Items".toHttpUrl().newBuilder().apply {
+            addQueryParameter("api_key", apiKey)
+            addQueryParameter("StartIndex", startIndex.toString())
+            addQueryParameter("Limit", "5")
+            addQueryParameter("Recursive", "true")
+            addQueryParameter("SortBy", "SortName")
+            addQueryParameter("SortOrder", "Ascending")
+            addQueryParameter("IncludeItemTypes", "Series,Movie,BoxSet")
+            addQueryParameter("ImageTypeLimit", "1")
+            addQueryParameter("EnableImageTypes", "Primary")
+            addQueryParameter("ParentId", parentId)
+            addQueryParameter("SearchTerm", query)
+        }
 
-        url.addQueryParameter("api_key", apiKey)
-        url.addQueryParameter("StartIndex", startIndex.toString())
-        url.addQueryParameter("Limit", "5")
-        url.addQueryParameter("Recursive", "true")
-        url.addQueryParameter("SortBy", "SortName")
-        url.addQueryParameter("SortOrder", "Ascending")
-        url.addQueryParameter("includeItemTypes", "Movie,Series,BoxSet")
-        url.addQueryParameter("ImageTypeLimit", "1")
-        url.addQueryParameter("EnableImageTypes", "Primary")
-        url.addQueryParameter("ParentId", parentId)
-        url.addQueryParameter("SearchTerm", query)
-
-        val response = client.newCall(
+        val items = client.newCall(
             GET(url.build().toString(), headers = headers),
-        ).execute()
-        val items = json.decodeFromString<ItemsResponse>(response.body.string())
-        items.Items.forEach {
-            animeList.addAll(
-                getAnimeFromId(it.Id),
-            )
+        ).execute().parseAs<ItemsResponse>()
+
+        val movieList = items.Items.filter { it.Type == "Movie" }
+        val nonMovieList = items.Items.filter { it.Type != "Movie" }
+
+        val animeList = getAnimeFromMovie(movieList) + nonMovieList.flatMap {
+            getAnimeFromId(it.Id)
         }
 
         return Observable.just(AnimesPage(animeList, 5 * page < items.TotalRecordCount))
     }
 
-    private fun getAnimeFromId(id: String): List<SAnime> {
-        val url = "$baseUrl/Users/$userId/Items".toHttpUrl().newBuilder()
+    private fun getAnimeFromMovie(movieList: List<ItemsResponse.Item>): List<SAnime> {
+        return movieList.map {
+            SAnime.create().apply {
+                title = it.Name
+                thumbnail_url = "$baseUrl/Items/${it.Id}/Images/Primary?api_key=$apiKey"
+                url = LinkData(
+                    "/Users/$userId/Items/${it.Id}?api_key=$apiKey",
+                    it.Id,
+                    it.Id,
+                ).toJsonString()
+            }
+        }
+    }
 
-        url.addQueryParameter("api_key", apiKey)
-        url.addQueryParameter("Recursive", "true")
-        url.addQueryParameter("SortBy", "SortName")
-        url.addQueryParameter("SortOrder", "Ascending")
-        url.addQueryParameter("includeItemTypes", "Movie,Series,Season")
-        url.addQueryParameter("ImageTypeLimit", "1")
-        url.addQueryParameter("EnableImageTypes", "Primary")
-        url.addQueryParameter("ParentId", id)
+    private fun getAnimeFromId(id: String): List<SAnime> {
+        val url = "$baseUrl/Users/$userId/Items".toHttpUrl().newBuilder().apply {
+            addQueryParameter("api_key", apiKey)
+            addQueryParameter("Recursive", "true")
+            addQueryParameter("SortBy", "SortName")
+            addQueryParameter("SortOrder", "Ascending")
+            addQueryParameter("includeItemTypes", "Movie,Series,Season")
+            addQueryParameter("ImageTypeLimit", "1")
+            addQueryParameter("EnableImageTypes", "Primary")
+            addQueryParameter("ParentId", id)
+        }
 
         val response = client.newCall(
             GET(url.build().toString()),
@@ -244,21 +286,24 @@ class Jellyfin : ConfigurableAnimeSource, AnimeHttpSource() {
             mediaId.seasonId
         }
 
-        val url = "$baseUrl/Users/$userId/Items/$infoId".toHttpUrl().newBuilder()
-
-        url.addQueryParameter("api_key", apiKey)
-        url.addQueryParameter("fields", "Studios")
+        val url = "$baseUrl/Users/$userId/Items/$infoId".toHttpUrl().newBuilder().apply {
+            addQueryParameter("api_key", apiKey)
+            addQueryParameter("fields", "Studios")
+        }
 
         return GET(url.toString())
     }
 
     override fun animeDetailsParse(response: Response): SAnime {
-        val info = json.decodeFromString<ItemsResponse.Item>(response.body.string())
+        val info = response.parseAs<ItemsResponse.Item>()
 
         val anime = SAnime.create()
 
         if (info.Genres != null) anime.genre = info.Genres.joinToString(", ")
-        if (info.SeriesStudio != null) anime.author = info.SeriesStudio
+
+        if (!info.Studios.isNullOrEmpty()) {
+            anime.author = info.Studios.mapNotNull { it.Name }.joinToString(", ")
+        } else if (info.SeriesStudio != null) anime.author = info.SeriesStudio
 
         anime.description = if (info.Overview != null) {
             Jsoup.parse(
@@ -269,6 +314,10 @@ class Jellyfin : ConfigurableAnimeSource, AnimeHttpSource() {
             ).text().replace("br2n", "\n")
         } else {
             ""
+        }
+
+        if (info.Type == "Movie") {
+            anime.status = SAnime.COMPLETED
         }
 
         anime.title = if (info.SeriesName == null) {
@@ -290,13 +339,15 @@ class Jellyfin : ConfigurableAnimeSource, AnimeHttpSource() {
     override fun episodeListParse(response: Response): List<SEpisode> {
         val episodeList = if (response.request.url.toString().startsWith("$baseUrl/Users/")) {
             val parsed = json.decodeFromString<ItemsResponse.Item>(response.body.string())
-            val episode = SEpisode.create()
-            episode.episode_number = 1.0F
-            episode.name = "Movie ${parsed.Name}"
-            episode.setUrlWithoutDomain(response.request.url.toString().substringAfter(baseUrl))
-            listOf(episode)
+            listOf(
+                SEpisode.create().apply {
+                    setUrlWithoutDomain(response.request.url.toString())
+                    name = "Movie ${parsed.Name}"
+                    episode_number = 1.0F
+                },
+            )
         } else {
-            val parsed = json.decodeFromString<ItemsResponse>(response.body.string())
+            val parsed = response.parseAs<ItemsResponse>()
 
             parsed.Items.map { ep ->
 
@@ -326,14 +377,14 @@ class Jellyfin : ConfigurableAnimeSource, AnimeHttpSource() {
 
     override fun videoListParse(response: Response): List<Video> {
         val videoList = mutableListOf<Video>()
-        val id = json.decodeFromString<ItemsResponse.Item>(response.body.string()).Id
+        val id = response.parseAs<ItemsResponse.Item>().Id
 
-        val sessionResponse = client.newCall(
+        val parsed = client.newCall(
             GET("$baseUrl/Items/$id/PlaybackInfo?userId=$userId&api_key=$apiKey"),
-        ).execute()
-        val parsed = json.decodeFromString<SessionResponse>(sessionResponse.body.string())
+        ).execute().parseAs<SessionResponse>()
 
         val subtitleList = mutableListOf<Track>()
+        val externalSubtitleList = mutableListOf<Track>()
 
         val prefSub = preferences.getString(JFConstants.PREF_SUB_KEY, "eng")!!
         val prefAudio = preferences.getString(JFConstants.PREF_AUDIO_KEY, "jpn")!!
@@ -352,20 +403,23 @@ class Jellyfin : ConfigurableAnimeSource, AnimeHttpSource() {
                             if (media.Language == prefSub) {
                                 try {
                                     if (media.IsExternal) {
-                                        subtitleList.add(0, Track(subUrl, media.DisplayTitle!!))
+                                        externalSubtitleList.add(0, Track(subUrl, media.DisplayTitle!!))
                                     }
+                                    subtitleList.add(0, Track(subUrl, media.DisplayTitle!!))
                                 } catch (e: Error) {
                                     subIndex = media.Index
                                 }
                             } else {
                                 if (media.IsExternal) {
-                                    subtitleList.add(Track(subUrl, media.DisplayTitle!!))
+                                    externalSubtitleList.add(Track(subUrl, media.DisplayTitle!!))
                                 }
+                                subtitleList.add(Track(subUrl, media.DisplayTitle!!))
                             }
                         } else {
                             if (media.IsExternal) {
-                                subtitleList.add(Track(subUrl, media.DisplayTitle!!))
+                                externalSubtitleList.add(Track(subUrl, media.DisplayTitle!!))
                             }
+                            subtitleList.add(Track(subUrl, media.DisplayTitle!!))
                         }
                     } else {
                         if (media.Language != null && media.Language == prefSub) {
@@ -389,44 +443,44 @@ class Jellyfin : ConfigurableAnimeSource, AnimeHttpSource() {
         JFConstants.QUALITIES_LIST.forEach { quality ->
             if (width < quality.width && height < quality.height) {
                 val url = "$baseUrl/Videos/$id/stream?static=True&api_key=$apiKey"
-                videoList.add(Video(url, "Best", url, subtitleTracks = subtitleList))
+                videoList.add(Video(url, "Source", url, subtitleTracks = externalSubtitleList))
 
                 return videoList.reversed()
             } else {
-                val url = "$baseUrl/videos/$id/main.m3u8".toHttpUrl().newBuilder()
-
-                url.addQueryParameter("api_key", apiKey)
-                url.addQueryParameter("VideoCodec", "h264")
-                url.addQueryParameter("AudioCodec", "aac,mp3")
-                url.addQueryParameter("AudioStreamIndex", audioIndex.toString())
-                subIndex?.let { url.addQueryParameter("SubtitleStreamIndex", it.toString()) }
-                url.addQueryParameter("VideoCodec", "h264")
-                url.addQueryParameter("VideoCodec", "h264")
-                url.addQueryParameter(
-                    "VideoBitrate",
-                    quality.videoBitrate.toString(),
-                )
-                url.addQueryParameter(
-                    "AudioBitrate",
-                    quality.audioBitrate.toString(),
-                )
-                url.addQueryParameter("PlaySessionId", parsed.PlaySessionId)
-                url.addQueryParameter("TranscodingMaxAudioChannels", "6")
-                url.addQueryParameter("RequireAvc", "false")
-                url.addQueryParameter("SegmentContainer", "ts")
-                url.addQueryParameter("MinSegments", "1")
-                url.addQueryParameter("BreakOnNonKeyFrames", "true")
-                url.addQueryParameter("h264-profile", "high,main,baseline,constrainedbaseline")
-                url.addQueryParameter("h264-level", "51")
-                url.addQueryParameter("h264-deinterlace", "true")
-                url.addQueryParameter("TranscodeReasons", "VideoCodecNotSupported,AudioCodecNotSupported,ContainerBitrateExceedsLimit")
+                val url = "$baseUrl/videos/$id/main.m3u8".toHttpUrl().newBuilder().apply {
+                    addQueryParameter("api_key", apiKey)
+                    addQueryParameter("VideoCodec", "h264")
+                    addQueryParameter("AudioCodec", "aac,mp3")
+                    addQueryParameter("AudioStreamIndex", audioIndex.toString())
+                    subIndex?.let { addQueryParameter("SubtitleStreamIndex", it.toString()) }
+                    addQueryParameter("VideoCodec", "h264")
+                    addQueryParameter("VideoCodec", "h264")
+                    addQueryParameter(
+                        "VideoBitrate",
+                        quality.videoBitrate.toString(),
+                    )
+                    addQueryParameter(
+                        "AudioBitrate",
+                        quality.audioBitrate.toString(),
+                    )
+                    addQueryParameter("PlaySessionId", parsed.PlaySessionId)
+                    addQueryParameter("TranscodingMaxAudioChannels", "6")
+                    addQueryParameter("RequireAvc", "false")
+                    addQueryParameter("SegmentContainer", "ts")
+                    addQueryParameter("MinSegments", "1")
+                    addQueryParameter("BreakOnNonKeyFrames", "true")
+                    addQueryParameter("h264-profile", "high,main,baseline,constrainedbaseline")
+                    addQueryParameter("h264-level", "51")
+                    addQueryParameter("h264-deinterlace", "true")
+                    addQueryParameter("TranscodeReasons", "VideoCodecNotSupported,AudioCodecNotSupported,ContainerBitrateExceedsLimit")
+                }
 
                 videoList.add(Video(url.toString(), quality.description, url.toString(), subtitleTracks = subtitleList))
             }
         }
 
         val url = "$baseUrl/Videos/$id/stream?static=True&api_key=$apiKey"
-        videoList.add(Video(url, "Best", url))
+        videoList.add(Video(url, "Source", url, subtitleTracks = externalSubtitleList))
 
         return videoList.reversed()
     }
@@ -434,10 +488,9 @@ class Jellyfin : ConfigurableAnimeSource, AnimeHttpSource() {
     // ============================= Utilities ==============================
 
     private fun animeParse(response: Response, page: Int): AnimesPage {
-        val items = json.decodeFromString<ItemsResponse>(response.body.string())
-        val animesList = mutableListOf<SAnime>()
+        val items = response.parseAs<ItemsResponse>()
 
-        items.Items.forEach { item ->
+        val animeList = items.Items.flatMap { item ->
             val anime = SAnime.create()
 
             when (item.Type) {
@@ -462,7 +515,7 @@ class Jellyfin : ConfigurableAnimeSource, AnimeHttpSource() {
                     if (item.ImageTags.Primary == null) {
                         anime.thumbnail_url = "$baseUrl/Items/${item.SeriesId}/Images/Primary?api_key=$apiKey"
                     }
-                    animesList.add(anime)
+                    listOf(anime)
                 }
                 "Movie" -> {
                     anime.title = item.Name
@@ -474,36 +527,39 @@ class Jellyfin : ConfigurableAnimeSource, AnimeHttpSource() {
                             item.Id,
                         ).toJsonString(),
                     )
-                    animesList.add(anime)
+                    listOf(anime)
                 }
                 "BoxSet" -> {
-                    val url = "$baseUrl/Users/$userId/Items".toHttpUrl().newBuilder()
-
-                    url.addQueryParameter("api_key", apiKey)
-                    url.addQueryParameter("Recursive", "true")
-                    url.addQueryParameter("SortBy", "SortName")
-                    url.addQueryParameter("SortOrder", "Ascending")
-                    url.addQueryParameter("includeItemTypes", "Movie,Series,Season")
-                    url.addQueryParameter("ImageTypeLimit", "1")
-                    url.addQueryParameter("ParentId", item.Id)
-                    url.addQueryParameter("EnableImageTypes", "Primary")
+                    val url = "$baseUrl/Users/$userId/Items".toHttpUrl().newBuilder().apply {
+                        addQueryParameter("api_key", apiKey)
+                        addQueryParameter("Recursive", "true")
+                        addQueryParameter("SortBy", "SortName")
+                        addQueryParameter("SortOrder", "Ascending")
+                        addQueryParameter("includeItemTypes", "Movie,Series,Season")
+                        addQueryParameter("ImageTypeLimit", "1")
+                        addQueryParameter("ParentId", item.Id)
+                        addQueryParameter("EnableImageTypes", "Primary")
+                    }
 
                     val response = client.newCall(
                         GET(url.build().toString(), headers = headers),
                     ).execute()
-                    animesList.addAll(animeParse(response, page).animes)
+                    animeParse(response, page).animes
                 }
-                else -> {
-                    return@forEach
-                }
+                else -> emptyList()
             }
         }
 
-        return AnimesPage(animesList, 20 * page < items.TotalRecordCount)
+        return AnimesPage(animeList, 20 * page < items.TotalRecordCount)
     }
 
     private fun LinkData.toJsonString(): String {
         return json.encodeToString(this)
+    }
+
+    private inline fun <reified T> Response.parseAs(transform: (String) -> String = { it }): T {
+        val responseBody = use { transform(it.body.string()) }
+        return json.decodeFromString(responseBody)
     }
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
@@ -587,6 +643,19 @@ class Jellyfin : ConfigurableAnimeSource, AnimeHttpSource() {
             }
         }
         screen.addPreference(metaTypePref)
+
+        val trustCertificatePref = SwitchPreferenceCompat(screen.context).apply {
+            key = "preferred_trust_all_certs"
+            title = "Trust all certificates"
+            summary = "Requires app restart to take effect."
+            setDefaultValue(false)
+
+            setOnPreferenceChangeListener { _, newValue ->
+                val new = newValue as Boolean
+                preferences.edit().putBoolean(key, new).commit()
+            }
+        }
+        screen.addPreference(trustCertificatePref)
     }
 
     private abstract class MediaLibPreference(context: Context) : ListPreference(context) {
@@ -594,60 +663,59 @@ class Jellyfin : ConfigurableAnimeSource, AnimeHttpSource() {
     }
 
     private fun medialibPreference(screen: PreferenceScreen) =
-        (
-            object : MediaLibPreference(screen.context) {
-                override fun reload() {
-                    this.apply {
-                        key = JFConstants.MEDIALIB_KEY
-                        title = JFConstants.MEDIALIB_TITLE
-                        summary = "%s"
+        object : MediaLibPreference(screen.context) {
+            override fun reload() {
+                this.apply {
+                    key = JFConstants.MEDIALIB_KEY
+                    title = JFConstants.MEDIALIB_TITLE
+                    summary = "%s"
 
-                        Thread {
-                            try {
-                                val mediaLibsResponse = client.newCall(
-                                    GET("$baseUrl/Users/$userId/Items?api_key=$apiKey"),
-                                ).execute()
-                                val mediaJson = mediaLibsResponse.body.let { json.decodeFromString<ItemsResponse>(it.string()) }?.Items
+                    Thread {
+                        try {
+                            val mediaLibsResponse = client.newCall(
+                                GET("$baseUrl/Users/$userId/Items?api_key=$apiKey"),
+                            ).execute()
+                            val mediaJson = mediaLibsResponse.body.let { json.decodeFromString<ItemsResponse>(it.string()) }?.Items
 
-                                val entriesArray = mutableListOf<String>()
-                                val entriesValueArray = mutableListOf<String>()
+                            val entriesArray = mutableListOf<String>()
+                            val entriesValueArray = mutableListOf<String>()
 
-                                if (mediaJson != null) {
-                                    for (media in mediaJson) {
-                                        entriesArray.add(media.Name)
-                                        entriesValueArray.add(media.Id)
-                                    }
+                            if (mediaJson != null) {
+                                for (media in mediaJson) {
+                                    entriesArray.add(media.Name)
+                                    entriesValueArray.add(media.Id)
                                 }
-
-                                entries = entriesArray.toTypedArray()
-                                entryValues = entriesValueArray.toTypedArray()
-                            } catch (ex: Exception) {
-                                entries = emptyArray()
-                                entryValues = emptyArray()
                             }
-                        }.start()
 
-                        setOnPreferenceChangeListener { _, newValue ->
-                            val selected = newValue as String
-                            val index = findIndexOfValue(selected)
-                            val entry = entryValues[index] as String
-                            parentId = entry
-                            preferences.edit().putString(key, entry).commit()
+                            entries = entriesArray.toTypedArray()
+                            entryValues = entriesValueArray.toTypedArray()
+                        } catch (ex: Exception) {
+                            entries = emptyArray()
+                            entryValues = emptyArray()
                         }
+                    }.start()
+
+                    setOnPreferenceChangeListener { _, newValue ->
+                        val selected = newValue as String
+                        val index = findIndexOfValue(selected)
+                        val entry = entryValues[index] as String
+                        parentId = entry
+                        preferences.edit().putString(key, entry).commit()
                     }
                 }
             }
-            ).apply { reload() }
+        }.apply { reload() }
+
+    private fun getSummary(isPassword: Boolean, value: String, placeholder: String) = when {
+        isPassword && value.isNotEmpty() || !isPassword && value.isEmpty() -> placeholder
+        else -> value
+    }
 
     private fun PreferenceScreen.editTextPreference(key: String, title: String, default: String, value: String, isPassword: Boolean = false, placeholder: String, mediaLibPref: MediaLibPreference): EditTextPreference {
         return EditTextPreference(context).apply {
             this.key = key
             this.title = title
-            summary = if ((isPassword && value.isNotEmpty()) || (!isPassword && value.isEmpty())) {
-                placeholder
-            } else {
-                value
-            }
+            summary = getSummary(isPassword, value, placeholder)
             this.setDefaultValue(default)
             dialogTitle = title
 
@@ -663,11 +731,7 @@ class Jellyfin : ConfigurableAnimeSource, AnimeHttpSource() {
                 try {
                     val newValueString = newValue as String
                     val res = preferences.edit().putString(key, newValueString).commit()
-                    summary = if ((isPassword && newValueString.isNotEmpty()) || (!isPassword && newValueString.isEmpty())) {
-                        placeholder
-                    } else {
-                        newValueString
-                    }
+                    summary = getSummary(isPassword, newValueString, placeholder)
                     val loginRes = login(true, context)
                     if (loginRes == true) {
                         mediaLibPref.reload()

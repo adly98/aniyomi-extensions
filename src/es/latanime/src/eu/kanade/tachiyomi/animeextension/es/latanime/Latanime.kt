@@ -5,7 +5,6 @@ import android.content.SharedPreferences
 import android.util.Base64
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
-import eu.kanade.tachiyomi.animeextension.es.latanime.extractors.UploadExtractor
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilter
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
@@ -16,7 +15,7 @@ import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.lib.doodextractor.DoodExtractor
 import eu.kanade.tachiyomi.lib.mp4uploadextractor.Mp4uploadExtractor
 import eu.kanade.tachiyomi.lib.okruextractor.OkruExtractor
-import eu.kanade.tachiyomi.lib.streamsbextractor.StreamSBExtractor
+import eu.kanade.tachiyomi.lib.uqloadextractor.UqloadExtractor
 import eu.kanade.tachiyomi.lib.youruploadextractor.YourUploadExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
@@ -297,8 +296,7 @@ class Latanime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     videoList.addAll(videos)
                 }
                 url.contains("uqload") -> {
-                    val headers = headers.newBuilder().add("referer", "https://uqload.com/").build()
-                    val videos = UploadExtractor(client).videoFromUrl(url, headers = headers, prefix = prefix)
+                    val videos = UqloadExtractor(client).videosFromUrl(url, prefix)
                     videoList.addAll(videos)
                 }
                 url.contains("doodstream") -> {
@@ -307,19 +305,6 @@ class Latanime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 }
                 url.contains("yourupload") -> {
                     val videos = YourUploadExtractor(client).videoFromUrl(url, headers = headers, name = "Original", prefix = prefix)
-                    videoList.addAll(videos)
-                }
-                url.contains("sbembed.com") || url.contains("sbembed1.com") || url.contains("sbplay.org") ||
-                    url.contains("sbvideo.net") || url.contains("streamsb.net") || url.contains("sbplay.one") ||
-                    url.contains("cloudemb.com") || url.contains("playersb.com") || url.contains("tubesb.com") ||
-                    url.contains("sbplay1.com") || url.contains("embedsb.com") || url.contains("watchsb.com") ||
-                    url.contains("sbplay2.com") || url.contains("japopav.tv") || url.contains("viewsb.com") ||
-                    url.contains("sbfast") || url.contains("sbfull.com") || url.contains("javplaya.com") ||
-                    url.contains("ssbstream.net") || url.contains("p1ayerjavseen.com") || url.contains("sbthe.com") ||
-                    url.contains("sbchill.com") || url.contains("sblongvu.com") || url.contains("sbanh.com") ||
-                    url.contains("sblanh.com")
-                -> {
-                    val videos = StreamSBExtractor(client).videosFromUrl(url, headers, prefix = prefix)
                     videoList.addAll(videos)
                 }
             }

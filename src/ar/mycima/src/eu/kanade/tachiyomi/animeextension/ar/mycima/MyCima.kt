@@ -6,7 +6,6 @@ import android.widget.Toast
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
 import eu.kanade.tachiyomi.animeextension.ar.mycima.extractors.GoVadExtractor
-import eu.kanade.tachiyomi.animeextension.ar.mycima.extractors.UQLoadExtractor
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilter
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
@@ -14,6 +13,7 @@ import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
+import eu.kanade.tachiyomi.lib.uqloadextractor.UqloadExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
 import kotlinx.coroutines.Dispatchers
@@ -102,7 +102,7 @@ class MyCima : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         episode.setUrlWithoutDomain(if (type == "mSeries") element.select("a").attr("href") else element.attr("abs:href"))
         if (type == "series") {
             episode.episode_number = when {
-                (epNum.isNotEmpty()) -> epNum.toFloat()
+                epNum.isNotEmpty() -> epNum.toFloatOrNull() ?: 1F
                 else -> 1F
             }
         }
@@ -127,20 +127,19 @@ class MyCima : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return document.select("ul.WatchServersList li btn").parallelMap {
             val frameURL = it.attr("data-url")
             runCatching {
-                if(it.parent()?.hasClass("MyCimaServer") == true)
-                {
+                if (it.parent()?.hasClass("MyCimaServer") == true) {
                     val referer = response.request.url.encodedPath
                     val newHeader = headers.newBuilder().add("referer", baseUrl + referer).build()
                     val iframeResponse = client.newCall(GET(frameURL, newHeader)).execute().asJsoup()
                     videosFromElement(iframeResponse.selectFirst(videoListSelector())!!)
                 } else {
-                     extractVideos(frameURL)
+                    extractVideos(frameURL)
                 }
             }.getOrElse { emptyList() }
         }.flatten()
     }
 
-    private fun extractVideos(url: String): List<Video>{
+    private fun extractVideos(url: String): List<Video> {
         return when {
             GOVAD_REGEX.containsMatchIn(url) -> {
                 val finalUrl = GOVAD_REGEX.find(url)!!.groupValues[0]
@@ -149,7 +148,7 @@ class MyCima : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             }
             UQLOAD_REGEX.containsMatchIn(url) -> {
                 val finalUrl = UQLOAD_REGEX.find(url)!!.groupValues[0]
-                UQLoadExtractor(client).videosFromUrl("https://www.$finalUrl.html")
+                UqloadExtractor(client).videosFromUrl("https://www.$finalUrl.html")
             }
             else -> null
         } ?: emptyList()
@@ -207,7 +206,7 @@ class MyCima : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 when (filter) {
                     is SearchCategoryList -> {
                         val catQ = getSearchCategoryList()[filter.state].query
-                        val catUrl = "$baseUrl/search/$query/" + if(catQ == "page/" && page == 1) "" else "$catQ$page"
+                        val catUrl = "$baseUrl/search/$query/" + if (catQ == "page/" && page == 1) "" else "$catQ$page"
                         return GET(catUrl, headers)
                     }
                     else -> {}
@@ -351,7 +350,7 @@ class MyCima : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             key = PREF_QUALITY_KEY
             title = PREF_QUALITY_TITLE
             entries = PREF_QUALITY_ENTRIES
-            entryValues = PREF_QUALITY_ENTRIES.map { it.replace("p","") }.toTypedArray()
+            entryValues = PREF_QUALITY_ENTRIES.map { it.replace("p", "") }.toTypedArray()
             setDefaultValue(PREF_QUALITY_DEFAULT)
             summary = "%s"
             setOnPreferenceChangeListener { _, newValue ->

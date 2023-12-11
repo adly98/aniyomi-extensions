@@ -18,7 +18,6 @@ import eu.kanade.tachiyomi.lib.doodextractor.DoodExtractor
 import eu.kanade.tachiyomi.lib.mp4uploadextractor.Mp4uploadExtractor
 import eu.kanade.tachiyomi.lib.okruextractor.OkruExtractor
 import eu.kanade.tachiyomi.lib.streamlareextractor.StreamlareExtractor
-import eu.kanade.tachiyomi.lib.streamsbextractor.StreamSBExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.network.asObservableSuccess
@@ -304,7 +303,6 @@ class AllAnime : ConfigurableAnimeSource, AnimeHttpSource() {
 
         // list of alternative hosters
         val mappings = listOf(
-            "streamsb" to listOf("streamsb"),
             "vidstreaming" to listOf("vidstreaming", "https://gogo", "playgo1.cc", "playtaku"),
             "doodstream" to listOf("dood"),
             "okru" to listOf("ok.ru"),
@@ -313,19 +311,7 @@ class AllAnime : ConfigurableAnimeSource, AnimeHttpSource() {
         )
 
         videoJson.data.episode.sourceUrls.forEach { video ->
-            val videoUrl = if (video.sourceUrl.startsWith("##")) {
-                AllAnimeDecryptor.decryptAllAnime(
-                    "1234567890123456789",
-                    video.sourceUrl.substringAfter("##"),
-                )
-            } else if (video.sourceUrl.startsWith("#")) {
-                AllAnimeDecryptor.decryptAllAnime(
-                    "allanimenews",
-                    video.sourceUrl.substringAfter("#"),
-                )
-            } else {
-                video.sourceUrl
-            }
+            val videoUrl = video.sourceUrl.decryptSource()
 
             val matchingMapping = mappings.firstOrNull { (altHoster, urlMatches) ->
                 altHosterSelection.contains(altHoster) && videoUrl.containsAny(urlMatches)
@@ -379,14 +365,6 @@ class AllAnime : ConfigurableAnimeSource, AnimeHttpSource() {
                                     headers = videoHeaders,
                                 ) to server.priority,
                             )
-                        }
-                        sName == "streamsb" -> {
-                            val extractor = StreamSBExtractor(client)
-                            runCatching {
-                                extractor.videosFromUrl(server.sourceUrl, headers)
-                            }.getOrNull()?.map {
-                                Pair(it, server.priority)
-                            } ?: emptyList()
                         }
                         sName == "vidstreaming" -> {
                             val extractor = VidstreamingExtractor(client, json)
@@ -443,6 +421,18 @@ class AllAnime : ConfigurableAnimeSource, AnimeHttpSource() {
     private inline fun <reified T> Response.parseAs(transform: (String) -> String = { it }): T {
         val responseBody = use { transform(it.body.string()) }
         return json.decodeFromString(responseBody)
+    }
+
+    private fun String.decryptSource(): String {
+        return if (this.startsWith("-")) {
+            this.substringAfterLast('-').chunked(2)
+                .map { it.toInt(16).toByte() }
+                .toByteArray().map {
+                    (it.toInt() xor 56).toChar()
+                }.joinToString("")
+        } else {
+            this
+        }
     }
 
     private fun prioritySort(pList: List<Pair<Video, Float>>): List<Video> {
@@ -538,7 +528,6 @@ class AllAnime : ConfigurableAnimeSource, AnimeHttpSource() {
             "okru",
             "mp4upload",
             "streamlare",
-            "streamsb",
             "doodstream",
         )
 

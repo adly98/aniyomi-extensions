@@ -5,7 +5,6 @@ import android.content.SharedPreferences
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
 import eu.kanade.tachiyomi.animeextension.es.legionanime.extractors.JkanimeExtractor
-import eu.kanade.tachiyomi.animeextension.es.legionanime.extractors.UqloadExtractor
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilter
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
@@ -19,6 +18,7 @@ import eu.kanade.tachiyomi.lib.gdriveplayerextractor.GdrivePlayerExtractor
 import eu.kanade.tachiyomi.lib.mp4uploadextractor.Mp4uploadExtractor
 import eu.kanade.tachiyomi.lib.okruextractor.OkruExtractor
 import eu.kanade.tachiyomi.lib.streamtapeextractor.StreamTapeExtractor
+import eu.kanade.tachiyomi.lib.uqloadextractor.UqloadExtractor
 import eu.kanade.tachiyomi.lib.youruploadextractor.YourUploadExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
@@ -279,13 +279,12 @@ class LegionAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     emptyList()
                 }
             }
-            /*
-            url.contains("sb") -> {
-                StreamSBExtractor(client).videosFromUrl(url, headers)
-            }
-             */
             url.contains("jkanime") -> {
-                listOf(JkanimeExtractor(client).getDesuFromUrl(url))
+                try {
+                    listOf(JkanimeExtractor(client).getDesuFromUrl(url))
+                } catch (_: Exception) {
+                    emptyList()
+                }
             }
             url.contains("/stream/amz.php?") -> {
                 try {
@@ -343,12 +342,7 @@ class LegionAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 }
             }
             url.contains("uqload") -> {
-                val video = UqloadExtractor(client).videoFromUrl(url, headers)
-                if (video != null) {
-                    listOf(video)
-                } else {
-                    emptyList()
-                }
+                UqloadExtractor(client).videosFromUrl(url)
             }
             else -> emptyList()
         }
@@ -405,7 +399,6 @@ class LegionAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
         val qualities = arrayOf(
             "Okru:1080p", "Okru:720p", "Okru:480p", "Okru:360p", "Okru:240p", // Okru
-            "StreamSB:360p", "StreamSB:480p", "StreamSB:720p", "StreamSB:1080p", // StreamSB
             "Xtreme S", "Nozomi", "Desu", "F1S-TAPE", "F1NIX", // video servers without resolution
         )
         val videoQualityPref = ListPreference(screen.context).apply {
