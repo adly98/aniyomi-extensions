@@ -8,7 +8,6 @@ import eu.kanade.tachiyomi.animesource.model.Track
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -18,10 +17,8 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.Headers
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
-import uy.kohesive.injekt.api.get
 
 class KissKH : AnimeHttpSource() {
 
@@ -32,8 +29,6 @@ class KissKH : AnimeHttpSource() {
     override val lang = "en"
 
     override val supportsLatest = true
-
-    override val client: OkHttpClient = network.client
 
     private val json = Json {
         isLenient = true
@@ -111,6 +106,8 @@ class KissKH : AnimeHttpSource() {
         return videosFromElement(response, id)
     }
 
+    private val subDecryptor by lazy { SubDecryptor(client, headers, baseUrl) }
+
     private fun videosFromElement(response: Response, id: String): List<Video> {
         val jsonData = response.body.string()
         val jObject = json.decodeFromString<JsonObject>(jsonData)
@@ -122,10 +119,16 @@ class KissKH : AnimeHttpSource() {
             try {
                 val suburl = item.jsonObject["src"]!!.jsonPrimitive.content
                 val lang = item.jsonObject["label"]!!.jsonPrimitive.content
-                subList.add(Track(suburl, lang))
+
+                if (suburl.endsWith("txt")) {
+                    subList.add(subDecryptor.getSubtitles(suburl, lang))
+                } else {
+                    subList.add(Track(suburl, lang))
+                }
             } catch (_: Error) {}
         }
         val videoUrl = jObject["Video"]!!.jsonPrimitive.content
+
         videoList.add(Video(videoUrl, "FirstParty", videoUrl, subtitleTracks = subList, headers = Headers.headersOf("referer", "https://kisskh.me/", "origin", "https://kisskh.me")))
 
         return videoList.reversed()

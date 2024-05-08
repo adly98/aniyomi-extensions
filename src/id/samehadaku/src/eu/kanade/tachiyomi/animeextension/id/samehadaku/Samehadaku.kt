@@ -14,10 +14,8 @@ import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.util.asJsoup
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.runBlocking
+import eu.kanade.tachiyomi.util.parallelCatchingFlatMapBlocking
+import eu.kanade.tachiyomi.util.parallelMapNotNullBlocking
 import okhttp3.FormBody
 import okhttp3.Request
 import okhttp3.Response
@@ -30,7 +28,7 @@ import java.util.Locale
 
 class Samehadaku : ConfigurableAnimeSource, AnimeHttpSource() {
     override val name: String = "Samehadaku"
-    override val baseUrl: String = "https://samehadaku.guru"
+    override val baseUrl: String = "https://samehadaku.show"
     override val lang: String = "id"
     override val supportsLatest: Boolean = true
 
@@ -112,13 +110,15 @@ class Samehadaku : ConfigurableAnimeSource, AnimeHttpSource() {
 
     override fun videoListParse(response: Response): List<Video> {
         val doc = response.asJsoup()
+        val parseUrl = response.request.url.toUrl()
+        val url = "${parseUrl.protocol}://${parseUrl.host}"
         return doc.select("#server > ul > li > div")
-            .parallelMapNotNull {
-                runCatching { getEmbedLinks(it) }.getOrNull()
+            .parallelMapNotNullBlocking {
+                runCatching { getEmbedLinks(url, it) }.getOrNull()
             }
-            .parallelMapNotNull {
-                runCatching { getVideosFromEmbed(it.first, it.second) }.getOrNull()
-            }.flatten()
+            .parallelCatchingFlatMapBlocking {
+                getVideosFromEmbed(it.first, it.second)
+            }
     }
 
     // ============================= Utilities ==============================
@@ -141,12 +141,6 @@ class Samehadaku : ConfigurableAnimeSource, AnimeHttpSource() {
                     else -> it
                 }.trim()
             }
-    }
-
-    private inline fun <A, B> Iterable<A>.parallelMapNotNull(crossinline f: suspend (A) -> B?): List<B> {
-        return runBlocking {
-            map { async(Dispatchers.Default) { f(it) } }.awaitAll().filterNotNull()
-        }
     }
 
     private fun getAnimeParse(document: Document, query: String): AnimesPage {
@@ -176,19 +170,19 @@ class Samehadaku : ConfigurableAnimeSource, AnimeHttpSource() {
         }
     }
 
-    private fun getEmbedLinks(element: Element): Pair<String, String> {
+    private fun getEmbedLinks(url: String, element: Element): Pair<String, String> {
         val form = FormBody.Builder().apply {
             add("action", "player_ajax")
             add("post", element.attr("data-post"))
             add("nume", element.attr("data-nume"))
             add("type", element.attr("data-type"))
         }.build()
-        return client.newCall(POST("$baseUrl/wp-admin/admin-ajax.php", body = form))
+        return client.newCall(POST("$url/wp-admin/admin-ajax.php", body = form))
             .execute()
-            .use {
-                val server = element.selectFirst("span")!!.text()
+            .let {
                 val link = it.body.string().substringAfter("src=\"").substringBefore("\"")
-                return@use Pair(server, link)
+                val server = element.selectFirst("span")!!.text()
+                Pair(server, link)
             }
     }
 
@@ -203,7 +197,7 @@ class Samehadaku : ConfigurableAnimeSource, AnimeHttpSource() {
             }
 
             "krakenfiles" in link -> {
-                client.newCall(GET(link)).execute().use {
+                client.newCall(GET(link)).execute().let {
                     val doc = it.asJsoup()
                     val getUrl = doc.selectFirst("source")!!.attr("src")
                     val videoUrl = "https:${getUrl.replace("&amp;", "&")}"
@@ -212,7 +206,7 @@ class Samehadaku : ConfigurableAnimeSource, AnimeHttpSource() {
             }
 
             "blogger" in link -> {
-                client.newCall(GET(link)).execute().use {
+                client.newCall(GET(link)).execute().let {
                     val videoUrl =
                         it.body.string().substringAfter("play_url\":\"").substringBefore("\"")
                     listOf(Video(videoUrl, server, videoUrl, headers))

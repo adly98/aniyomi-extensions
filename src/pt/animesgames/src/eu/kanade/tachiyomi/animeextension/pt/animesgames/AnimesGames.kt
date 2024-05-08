@@ -9,8 +9,9 @@ import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.lib.bloggerextractor.BloggerExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
-import eu.kanade.tachiyomi.network.asObservableSuccess
+import eu.kanade.tachiyomi.network.awaitSuccess
 import eu.kanade.tachiyomi.util.asJsoup
+import eu.kanade.tachiyomi.util.parseAs
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.FormBody
@@ -20,7 +21,6 @@ import okhttp3.Response
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import rx.Observable
 import uy.kohesive.injekt.injectLazy
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -67,14 +67,14 @@ class AnimesGames : ParsedAnimeHttpSource() {
     override fun latestUpdatesNextPageSelector() = "ol.pagination > a:contains(>)"
 
     // =============================== Search ===============================
-    override fun fetchSearchAnime(page: Int, query: String, filters: AnimeFilterList): Observable<AnimesPage> {
+    override suspend fun getSearchAnime(page: Int, query: String, filters: AnimeFilterList): AnimesPage {
         return if (query.startsWith(PREFIX_SEARCH)) { // URL intent handler
             val id = query.removePrefix(PREFIX_SEARCH)
             client.newCall(GET("$baseUrl/animes/$id"))
-                .asObservableSuccess()
-                .map(::searchAnimeByIdParse)
+                .awaitSuccess()
+                .use(::searchAnimeByIdParse)
         } else {
-            super.fetchSearchAnime(page, query, filters)
+            super.getSearchAnime(page, query, filters)
         }
     }
 
@@ -92,7 +92,7 @@ class AnimesGames : ParsedAnimeHttpSource() {
 
     private val searchToken by lazy {
         client.newCall(GET("$baseUrl/lista-de-animes", headers)).execute()
-            .use { it.asJsoup() }
+            .asJsoup()
             .selectFirst("div.menu_filter_box")!!
             .attr("data-secury")
     }
@@ -144,7 +144,7 @@ class AnimesGames : ParsedAnimeHttpSource() {
     }
 
     override fun searchAnimeNextPageSelector(): String? {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     // =========================== Anime Details ============================
@@ -176,7 +176,7 @@ class AnimesGames : ParsedAnimeHttpSource() {
 
     // ============================== Episodes ==============================
     override fun episodeListParse(response: Response): List<SEpisode> {
-        return getRealDoc(response.use { it.asJsoup() })
+        return getRealDoc(response.asJsoup())
             .select(episodeListSelector())
             .map(::episodeFromElement)
             .reversed()
@@ -196,13 +196,13 @@ class AnimesGames : ParsedAnimeHttpSource() {
     // ============================ Video Links =============================
     private val bloggerExtractor by lazy { BloggerExtractor(client) }
     override fun videoListParse(response: Response): List<Video> {
-        val doc = response.use { it.asJsoup() }
+        val doc = response.asJsoup()
         val url = doc.selectFirst("div.Link > a")
             ?.attr("href")
             ?: return emptyList()
 
         val playerDoc = client.newCall(GET(url, headers)).execute()
-            .use { it.asJsoup() }
+            .asJsoup()
 
         val iframe = playerDoc.selectFirst("iframe")
         return when {
@@ -227,7 +227,7 @@ class AnimesGames : ParsedAnimeHttpSource() {
             playlistUrl.endsWith("m3u8") -> {
                 val separator = "#EXT-X-STREAM-INF:"
                 client.newCall(GET(playlistUrl, headers)).execute()
-                    .use { it.body.string() }
+                    .body.string()
                     .substringAfter(separator)
                     .split(separator)
                     .map {
@@ -242,28 +242,25 @@ class AnimesGames : ParsedAnimeHttpSource() {
     }
 
     override fun videoListSelector(): String {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     override fun videoFromElement(element: Element): Video {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     override fun videoUrlParse(document: Document): String {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     // ============================= Utilities ==============================
-    private inline fun <reified T> Response.parseAs(): T {
-        return use { it.body.string() }.let(json::decodeFromString)
-    }
 
     private fun getRealDoc(document: Document): Document {
         if (!document.location().contains("/video/")) return document
 
         return document.selectFirst("div.linksEP > a:has(li.episodio)")?.let {
             client.newCall(GET(it.attr("href"), headers)).execute()
-                .use { req -> req.asJsoup() }
+                .asJsoup()
         } ?: document
     }
 

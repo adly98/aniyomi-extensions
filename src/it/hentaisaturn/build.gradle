@@ -1,13 +1,8 @@
-apply plugin: 'com.android.application'
-apply plugin: 'kotlin-android'
-
 ext {
     extName = 'Hentai Saturn'
-    pkgNameSuffix = 'it.hentaisaturn'
     extClass = '.HentaiSaturn'
     extVersionCode = 5
-    libVersion = '13'
-    containsNsfw = true
+    isNsfw = true
 }
 
 apply from: "$rootDir/common.gradle"

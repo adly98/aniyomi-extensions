@@ -184,7 +184,7 @@ The simplest extension structure looks like this:
 ```console
 $ tree src/<lang>/<mysourcename>/
 src/<lang>/<mysourcename>/
-├── AndroidManifest.xml
+├── AndroidManifest.xml (optional)
 ├── build.gradle
 ├── build.gradle
 ├── res
@@ -211,22 +211,23 @@ src/<lang>/<mysourcename>/
 13 directories, 9 files
 ```
 
-#### AndroidManifest.xml
-A minimal [Android manifest file](https://developer.android.com/guide/topics/manifest/manifest-intro) is needed for Android to recognize a extension when it's compiled into an APK file. You can also add intent filters inside this file (see [URL intent filter](#url-intent-filter) for more information).
+`<lang>` should be an ISO 639-1 compliant language code (two letters or `all`). `<mysourcename>`
+should be adapted from the site name, and can only contain lowercase ASCII letters and digits.
+Your extension code must be placed in the package `eu.kanade.tachiyomi.animeextension.<lang>.<mysourcename>`.
+
+#### AndroidManifest.xml (optional)
+You only need to create this file if you want to add deep linking to your extension.
+See [URL intent filter](#url-intent-filter) for more information.
 
 #### build.gradle
 Make sure that your new extension's `build.gradle` file follows the following structure:
 
-```gradle
-apply plugin: 'com.android.application'
-apply plugin: 'kotlin-android'
-
+```groovy
 ext {
     extName = '<My source name>'
-    pkgNameSuffix = '<lang>.<mysourcename>'
     extClass = '.<MySourceName>'
     extVersionCode = 1
-    containsNsfw = true
+    isNsfw = true
 }
 
 apply from: "$rootDir/common.gradle"
@@ -234,14 +235,12 @@ apply from: "$rootDir/common.gradle"
 
 | Field | Description |
 | ----- | ----------- |
-| `extName` | The name of the extension. |
-| `pkgNameSuffix` | A unique suffix added to `eu.kanade.tachiyomi.animeextension`. The language and the site name should be enough. Remember your extension code implementation must be placed in this package. |
+| `extName` | The name of the extension. Should be romanized if site name is not in English.|
 | `extClass` | Points to the class that implements `AnimeSource`. You can use a relative path starting with a dot (the package name is the base path). This is used to find and instantiate the source(s). |
 | `extVersionCode` | The extension version code. This must be a positive integer and incremented with any change to the code. |
-| `libVersion` | (Optional, defaults to `13`) The version of the [extensions library](https://github.com/aniyomiorg/extensions-lib) used. |
-| `containsNsfw` | (Optional, defaults to `false`) Flag to indicate that a source contains NSFW content. |
+| `isNsfw` | (Optional, defaults to `false`) Flag to indicate that a source contains NSFW content. |
 
-The extension's version name is generated automatically by concatenating `libVersion` and `extVersionCode`. With the example used above, the version would be `13`.
+The extension's version name is generated automatically by concatenating `14` and `extVersionCode`. With the example used above, the version would be `14.1`.
 
 ### Core dependencies
 
@@ -251,31 +250,31 @@ Extensions rely on [extensions-lib](https://github.com/aniyomiorg/extensions-lib
 
 #### CryptoAES library
 
-The [`lib-cryptoaes`](https://github.com/aniyomiorg/aniyomi-extensions/tree/master/lib/cryptoaes) provides utilities for decrypting AES-encrypted data, like data encrypted with AES+EvpKDF (The key-derivation algorithm used by the [cryptojs](https://cryptojs.gitbook.io/docs/) library). It also includes some utilities to decrypt strings in the [jsfuck](https://jsfuck.com/) format.
+The [`cryptoaes`](https://github.com/aniyomiorg/aniyomi-extensions/tree/master/lib/cryptoaes) provides utilities for decrypting AES-encrypted data, like data encrypted with AES+EvpKDF (The key-derivation algorithm used by the [cryptojs](https://cryptojs.gitbook.io/docs/) library). It also includes some utilities to decrypt strings in the [jsfuck](https://jsfuck.com/) format.
 
-```gradle
+```groovy
 dependencies {
-    implementation(project(":lib-cryptoaes"))
+    implementation(project(":lib:cryptoaes"))
 }
 ```
 
 #### Unpacker library
 
-The [`lib-unpacker`](https://github.com/aniyomiorg/aniyomi-extensions/tree/master/lib/unpacker) library provides a deobfuscator(unpacker) for javascript code obfuscated with the [jspacker](http://dean.edwards.name/packer/) algorithm.
+The [`unpacker`](https://github.com/aniyomiorg/aniyomi-extensions/tree/master/lib/unpacker) library provides a deobfuscator(unpacker) for javascript code obfuscated with the [jspacker](http://dean.edwards.name/packer/) algorithm.
 
-```gradle
+```groovy
 dependencies {
-    implementation(project(":lib-unpacker"))
+    implementation(project(":lib:unpacker"))
 }
 ```
 
 #### Synchrony library
 
-[`lib-synchrony`](https://github.com/aniyomiorg/aniyomi-extensions/tree/master/lib/synchrony) is a library that bundles and runs the [synchrony](https://github.com/relative/synchrony) deobfuscator with your extension to help when deobfuscating obfuscated javascript. Useful to get data on highly obfuscated javascript code.
+[`synchrony`](https://github.com/aniyomiorg/aniyomi-extensions/tree/master/lib/synchrony) is a library that bundles and runs the [synchrony](https://github.com/relative/synchrony) deobfuscator with your extension to help when deobfuscating obfuscated javascript. Useful to get data on highly obfuscated javascript code.
 
-```gradle
+```groovy
 dependencies {
-    implementation(project(":lib-synchrony"))
+    implementation(project(":lib:synchrony"))
 }
 ```
 
@@ -408,7 +407,7 @@ open class UriPartFilter(displayName: String, private val vals: Array<Pair<Strin
 
 ### Misc notes
 
-- Sometimes you may find no use for some inherited methods. If so just override them and throw exceptions: `throw UnsupportedOperationException("Not used.")`
+- Sometimes you may find no use for some inherited methods. If so just override them and throw exceptions: `throw UnsupportedOperationException()`
 - You probably will find `getUrlWithoutDomain` useful when parsing the target source URLs. Keep in mind there's a current issue with spaces in the URL though, so if you use it, replace all spaces with URL encoded characters (like `%20`).
 - If possible try to stick to the general workflow from `AnimeHttpSource`/`AnimeParsedHttpSource`; breaking them may cause you more headache than necessary.
 - By implementing `ConfigurableAnimeSource` you can add settings to your source, which is backed by [`SharedPreferences`](https://developer.android.com/reference/android/content/SharedPreferences).
@@ -680,7 +679,7 @@ class AnimeSource : AnimeTheme(
         return this
     }
 
-    override val client: OkHttpClient = network.cloudflareClient.newBuilder()
+    override val client: OkHttpClient = network.client.newBuilder()
         .ignoreAllSSLErrors()
         .proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress("10.0.2.2", 8080)))
         .build()
@@ -708,6 +707,6 @@ Please **do test your changes by compiling it through Android Studio** before su
 - Update `extVersionCode` value in `build.gradle` for individual extensions
 - Update `overrideVersionCode` or `baseVersionCode` as needed for all multisrc extensions
 - Reference all related issues in the PR body (e.g. "Closes #xyz")
-- Add the `containsNsfw = true` flag in `build.gradle` when appropriate
+- Add the `isNsfw = true` flag in `build.gradle` when appropriate
 - Explicitly kept the `id` if a source's name or language were changed
 - Test the modifications by compiling and running the extension through Android Studio

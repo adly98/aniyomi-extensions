@@ -2,11 +2,8 @@ package eu.kanade.tachiyomi.animeextension.en.ripcrabbyanime
 
 import android.app.Application
 import android.content.SharedPreferences
-import android.widget.Toast
-import androidx.preference.EditTextPreference
 import androidx.preference.PreferenceScreen
 import androidx.preference.SwitchPreferenceCompat
-import eu.kanade.tachiyomi.animeextension.BuildConfig
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilter
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
@@ -19,17 +16,16 @@ import eu.kanade.tachiyomi.lib.googledriveextractor.GoogleDriveExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.util.asJsoup
+import eu.kanade.tachiyomi.util.parseAs
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import rx.Observable
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
@@ -41,13 +37,13 @@ class Ripcrabbyanime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val id = 623659475482363776
 
-    override val baseUrl by lazy { preferences.getString(PREF_DOMAIN_KEY, PREF_DOMAIN_DEFAULT)!! }
+    // TODO: Check frequency of url changes to potentially
+    // add back overridable baseurl preference
+    override val baseUrl = "https://ripcrabbyanime.com"
 
     override val lang = "en"
 
     override val supportsLatest = false
-
-    override val client: OkHttpClient = network.cloudflareClient
 
     private val json: Json by injectLazy()
 
@@ -59,7 +55,7 @@ class Ripcrabbyanime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun popularAnimeRequest(page: Int): Request = GET("$baseUrl/ongoing-series/")
 
-    override fun popularAnimeSelector(): String = "section#movies-list > div.movies-box"
+    override fun popularAnimeSelector(): String = "section#movies-list div.movies-box"
 
     override fun popularAnimeFromElement(element: Element): SAnime = SAnime.create().apply {
         setUrlWithoutDomain(element.selectFirst("a")!!.attr("href"))
@@ -71,13 +67,13 @@ class Ripcrabbyanime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     // =============================== Latest ===============================
 
-    override fun latestUpdatesRequest(page: Int): Request = throw Exception("Not Used")
+    override fun latestUpdatesRequest(page: Int): Request = throw UnsupportedOperationException()
 
-    override fun latestUpdatesSelector(): String = throw Exception("Not Used")
+    override fun latestUpdatesSelector(): String = throw UnsupportedOperationException()
 
-    override fun latestUpdatesFromElement(element: Element): SAnime = throw Exception("Not Used")
+    override fun latestUpdatesFromElement(element: Element): SAnime = throw UnsupportedOperationException()
 
-    override fun latestUpdatesNextPageSelector(): String = throw Exception("Not Used")
+    override fun latestUpdatesNextPageSelector(): String = throw UnsupportedOperationException()
 
     // =============================== Search ===============================
 
@@ -320,29 +316,24 @@ class Ripcrabbyanime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return episodeList.reversed()
     }
 
-    override fun episodeListSelector(): String = throw Exception("Not used")
+    override fun episodeListSelector(): String = throw UnsupportedOperationException()
 
-    override fun episodeFromElement(element: Element): SEpisode = throw Exception("Not used")
+    override fun episodeFromElement(element: Element): SEpisode = throw UnsupportedOperationException()
 
     // ============================ Video Links =============================
 
-    override fun fetchVideoList(episode: SEpisode): Observable<List<Video>> {
-        val videoList = GoogleDriveExtractor(client, headers).videosFromUrl(episode.url)
-        return Observable.just(videoList)
+    override suspend fun getVideoList(episode: SEpisode): List<Video> {
+        val videoList = GoogleDriveExtractor(client, headers).videosFromUrl(episode.url.substringAfter("?id="))
+        return videoList
     }
 
-    override fun videoListSelector(): String = throw Exception("Not Used")
+    override fun videoListSelector(): String = throw UnsupportedOperationException()
 
-    override fun videoFromElement(element: Element): Video = throw Exception("Not Used")
+    override fun videoFromElement(element: Element): Video = throw UnsupportedOperationException()
 
-    override fun videoUrlParse(document: Document): String = throw Exception("Not Used")
+    override fun videoUrlParse(document: Document): String = throw UnsupportedOperationException()
 
     // ============================= Utilities ==============================
-
-    private inline fun <reified T> Response.parseAs(transform: (String) -> String = { it }): T {
-        val responseBody = use { transform(it.body.string()) }
-        return json.decodeFromString(responseBody)
-    }
 
     // https://github.com/yt-dlp/yt-dlp/blob/8f0be90ecb3b8d862397177bb226f17b245ef933/yt_dlp/extractor/youtube.py#L573
     private fun generateSapisidhashHeader(SAPISID: String, origin: String = "https://drive.google.com"): String {
@@ -421,11 +412,6 @@ class Ripcrabbyanime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
         private const val TRIM_EPISODE_NAME_KEY = "trim_episode"
         private const val TRIM_EPISODE_NAME_DEFAULT = true
-
-        private val PREF_DOMAIN_KEY = "preferred_domain_name_v${BuildConfig.VERSION_CODE}"
-        private const val PREF_DOMAIN_TITLE = "Override BaseUrl"
-        private const val PREF_DOMAIN_DEFAULT = "https://ripcrabbyanimes.com"
-        private const val PREF_DOMAIN_SUMMARY = "For temporary uses. Updating the extension will erase this setting."
     }
 
     private val SharedPreferences.trimEpisodeName
@@ -434,21 +420,6 @@ class Ripcrabbyanime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // ============================== Settings ==============================
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
-        EditTextPreference(screen.context).apply {
-            key = PREF_DOMAIN_KEY
-            title = PREF_DOMAIN_TITLE
-            summary = PREF_DOMAIN_SUMMARY
-            dialogTitle = PREF_DOMAIN_TITLE
-            dialogMessage = "Default: $PREF_DOMAIN_DEFAULT"
-            setDefaultValue(PREF_DOMAIN_DEFAULT)
-
-            setOnPreferenceChangeListener { _, newValue ->
-                val newValueString = newValue as String
-                Toast.makeText(screen.context, "Restart Aniyomi to apply new setting.", Toast.LENGTH_LONG).show()
-                preferences.edit().putString(key, newValueString.trim()).commit()
-            }
-        }.also(screen::addPreference)
-
         SwitchPreferenceCompat(screen.context).apply {
             key = TRIM_EPISODE_NAME_KEY
             title = "Trim info from episode name"

@@ -1,5 +1,10 @@
 package eu.kanade.tachiyomi.animeextension.en.edytjedhgmdhm
 
+import android.app.Application
+import android.content.SharedPreferences
+import androidx.preference.ListPreference
+import androidx.preference.PreferenceScreen
+import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilter
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.AnimesPage
@@ -10,20 +15,20 @@ import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
 import okhttp3.HttpUrl.Companion.toHttpUrl
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import rx.Observable
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.net.URI
 import java.net.URISyntaxException
 
-class Edytjedhgmdhm : ParsedAnimeHttpSource() {
+class Edytjedhgmdhm : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val name = "edytjedhgmdhm"
 
-    override val baseUrl = "https://edytjedhgmdhm.abfhaqrhbnf.workers.dev"
+    override val baseUrl by lazy { getBaseUrlPref() }
 
     private val videoFormats = arrayOf(".mkv", ".mp4", ".avi")
 
@@ -31,9 +36,23 @@ class Edytjedhgmdhm : ParsedAnimeHttpSource() {
 
     override val supportsLatest = false
 
-    override val client: OkHttpClient = network.cloudflareClient
+    private val preferences: SharedPreferences by lazy {
+        Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
+    }
 
     // ============================ Initializers ============================
+
+    private val asiandramaList by lazy {
+        client.newCall(GET("$baseUrl/asiandrama/")).execute()
+            .asJsoup()
+            .select(LINK_SELECTOR)
+    }
+
+    private val kdramaList by lazy {
+        client.newCall(GET("$baseUrl/kdrama/")).execute()
+            .asJsoup()
+            .select(LINK_SELECTOR)
+    }
 
     private val miscList by lazy {
         client.newCall(GET("$baseUrl/misc/")).execute()
@@ -55,7 +74,7 @@ class Edytjedhgmdhm : ParsedAnimeHttpSource() {
 
     // ============================== Popular ===============================
 
-    override fun fetchPopularAnime(page: Int): Observable<AnimesPage> {
+    override suspend fun getPopularAnime(page: Int): AnimesPage {
         val results = tvsList.chunked(CHUNKED_SIZE).toList()
 
         val hasNextPage = results.size > page
@@ -70,36 +89,36 @@ class Edytjedhgmdhm : ParsedAnimeHttpSource() {
                 }
             }
         }
-        return Observable.just(AnimesPage(animeList, hasNextPage))
+        return AnimesPage(animeList, hasNextPage)
     }
 
-    override fun popularAnimeRequest(page: Int): Request = throw Exception("Not used")
+    override fun popularAnimeRequest(page: Int): Request = throw UnsupportedOperationException()
 
-    override fun popularAnimeParse(response: Response): AnimesPage = throw Exception("Not used")
+    override fun popularAnimeParse(response: Response): AnimesPage = throw UnsupportedOperationException()
 
-    override fun popularAnimeSelector(): String = throw Exception("Not used")
+    override fun popularAnimeSelector(): String = throw UnsupportedOperationException()
 
-    override fun popularAnimeFromElement(element: Element): SAnime = throw Exception("Not used")
+    override fun popularAnimeFromElement(element: Element): SAnime = throw UnsupportedOperationException()
 
-    override fun popularAnimeNextPageSelector(): String = throw Exception("Not used")
+    override fun popularAnimeNextPageSelector(): String = throw UnsupportedOperationException()
 
     // =============================== Latest ===============================
 
-    override fun latestUpdatesRequest(page: Int): Request = throw Exception("Not used")
+    override fun latestUpdatesRequest(page: Int): Request = throw UnsupportedOperationException()
 
-    override fun latestUpdatesSelector(): String = throw Exception("Not used")
+    override fun latestUpdatesSelector(): String = throw UnsupportedOperationException()
 
-    override fun latestUpdatesNextPageSelector(): String = throw Exception("Not used")
+    override fun latestUpdatesNextPageSelector(): String = throw UnsupportedOperationException()
 
-    override fun latestUpdatesFromElement(element: Element): SAnime = throw Exception("Not used")
+    override fun latestUpdatesFromElement(element: Element): SAnime = throw UnsupportedOperationException()
 
     // =============================== Search ===============================
 
-    override fun fetchSearchAnime(
+    override suspend fun getSearchAnime(
         page: Int,
         query: String,
         filters: AnimeFilterList,
-    ): Observable<AnimesPage> {
+    ): AnimesPage {
         val filterList = if (filters.isEmpty()) getFilterList() else filters
         val subPageFilter = filterList.find { it is SubPageFilter } as SubPageFilter
         val subPage = subPageFilter.toUriPart()
@@ -108,6 +127,8 @@ class Edytjedhgmdhm : ParsedAnimeHttpSource() {
             "/tvs/" -> tvsList
             "/movies/" -> moviesList
             "/misc/" -> miscList
+            "/kdrama/" -> kdramaList
+            "/asiandrama/" -> asiandramaList
             else -> emptyList()
         }
 
@@ -130,16 +151,16 @@ class Edytjedhgmdhm : ParsedAnimeHttpSource() {
                 }
             }
         }
-        return Observable.just(AnimesPage(animeList, hasNextPage))
+        return AnimesPage(animeList, hasNextPage)
     }
 
-    override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request = throw Exception("Not used")
+    override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request = throw UnsupportedOperationException()
 
-    override fun searchAnimeSelector(): String = throw Exception("Not used")
+    override fun searchAnimeSelector(): String = throw UnsupportedOperationException()
 
-    override fun searchAnimeFromElement(element: Element): SAnime = throw Exception("Not used")
+    override fun searchAnimeFromElement(element: Element): SAnime = throw UnsupportedOperationException()
 
-    override fun searchAnimeNextPageSelector(): String = throw Exception("Not used")
+    override fun searchAnimeNextPageSelector(): String = throw UnsupportedOperationException()
 
     // ============================== FILTERS ===============================
 
@@ -153,7 +174,9 @@ class Edytjedhgmdhm : ParsedAnimeHttpSource() {
         arrayOf(
             Pair("TVs", "/tvs/"),
             Pair("Movies", "/movies/"),
-            Pair("misc", "/misc/"),
+            Pair("Misc", "/misc/"),
+            Pair("K-drama", "/kdrama/"),
+            Pair("Asian drama", "/asiandrama/"),
         ),
     )
 
@@ -164,13 +187,13 @@ class Edytjedhgmdhm : ParsedAnimeHttpSource() {
 
     // =========================== Anime Details ============================
 
-    override fun fetchAnimeDetails(anime: SAnime): Observable<SAnime> = Observable.just(anime)
+    override suspend fun getAnimeDetails(anime: SAnime): SAnime = anime
 
-    override fun animeDetailsParse(document: Document): SAnime = throw Exception("Not used")
+    override fun animeDetailsParse(document: Document): SAnime = throw UnsupportedOperationException()
 
     // ============================== Episodes ==============================
 
-    override fun fetchEpisodeList(anime: SAnime): Observable<List<SEpisode>> {
+    override suspend fun getEpisodeList(anime: SAnime): List<SEpisode> {
         val episodeList = mutableListOf<SEpisode>()
 
         fun traverseDirectory(url: String) {
@@ -215,25 +238,25 @@ class Edytjedhgmdhm : ParsedAnimeHttpSource() {
 
         traverseDirectory(baseUrl + anime.url)
 
-        return Observable.just(episodeList.reversed())
+        return episodeList.reversed()
     }
 
-    override fun episodeListParse(response: Response): List<SEpisode> = throw Exception("Not used")
+    override fun episodeListParse(response: Response): List<SEpisode> = throw UnsupportedOperationException()
 
-    override fun episodeListSelector(): String = throw Exception("Not Used")
+    override fun episodeListSelector(): String = throw UnsupportedOperationException()
 
-    override fun episodeFromElement(element: Element): SEpisode = throw Exception("Not used")
+    override fun episodeFromElement(element: Element): SEpisode = throw UnsupportedOperationException()
 
     // ============================ Video Links =============================
 
-    override fun fetchVideoList(episode: SEpisode): Observable<List<Video>> =
-        Observable.just(listOf(Video(baseUrl + episode.url, "Video", baseUrl + episode.url)))
+    override suspend fun getVideoList(episode: SEpisode): List<Video> =
+        listOf(Video(baseUrl + episode.url, "Video", baseUrl + episode.url))
 
-    override fun videoFromElement(element: Element): Video = throw Exception("Not Used")
+    override fun videoFromElement(element: Element): Video = throw UnsupportedOperationException()
 
-    override fun videoListSelector(): String = throw Exception("Not Used")
+    override fun videoListSelector(): String = throw UnsupportedOperationException()
 
-    override fun videoUrlParse(document: Document): String = throw Exception("Not Used")
+    override fun videoUrlParse(document: Document): String = throw UnsupportedOperationException()
 
     // ============================= Utilities ==============================
 
@@ -282,5 +305,43 @@ class Edytjedhgmdhm : ParsedAnimeHttpSource() {
     companion object {
         private const val CHUNKED_SIZE = 30
         private const val LINK_SELECTOR = "table tbody a:not([href=..])"
+
+        private const val PREF_DOMAIN_KEY = "preferred_domain"
+        private const val PREF_DOMAIN_TITLE = "Preferred domain (requires app restart)"
+        private val PREF_DOMAIN_ENTRY_VALUES = arrayOf(
+            "https://edytjedhgmdhm.abfhaqrhbnf.workers.dev",
+            "https://odd-bird-1319.zwuhygoaqe.workers.dev",
+            "https://hello-world-flat-violet-6291.wstnjewyeaykmdg.workers.dev",
+            "https://worker-mute-fog-66ae.ihrqljobdq.workers.dev",
+            "https://worker-square-heart-580a.uieafpvtgl.workers.dev",
+            "https://worker-little-bread-2c2f.wqwmiuvxws.workers.dev",
+        )
+        private val PREF_DOMAIN_ENTRIES = PREF_DOMAIN_ENTRY_VALUES.map {
+            it.substringAfter("//").substringBefore(".")
+        }.toTypedArray()
+        private val PREF_DOMAIN_DEFAULT = PREF_DOMAIN_ENTRY_VALUES.first()
+    }
+
+    private fun getBaseUrlPref(): String =
+        preferences.getString(PREF_DOMAIN_KEY, PREF_DOMAIN_DEFAULT)!!
+
+    // ============================== Settings ==============================
+
+    override fun setupPreferenceScreen(screen: PreferenceScreen) {
+        ListPreference(screen.context).apply {
+            key = PREF_DOMAIN_KEY
+            title = PREF_DOMAIN_TITLE
+            entries = PREF_DOMAIN_ENTRIES
+            entryValues = PREF_DOMAIN_ENTRY_VALUES
+            setDefaultValue(PREF_DOMAIN_DEFAULT)
+            summary = "%s"
+
+            setOnPreferenceChangeListener { _, newValue ->
+                val selected = newValue as String
+                val index = findIndexOfValue(selected)
+                val entry = entryValues[index] as String
+                preferences.edit().putString(key, entry).commit()
+            }
+        }.also(screen::addPreference)
     }
 }

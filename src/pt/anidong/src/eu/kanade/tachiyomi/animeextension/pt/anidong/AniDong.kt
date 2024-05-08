@@ -11,7 +11,7 @@ import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
-import eu.kanade.tachiyomi.network.asObservableSuccess
+import eu.kanade.tachiyomi.network.awaitSuccess
 import eu.kanade.tachiyomi.util.asJsoup
 import kotlinx.serialization.json.Json
 import okhttp3.FormBody
@@ -19,7 +19,6 @@ import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import rx.Observable
 import uy.kohesive.injekt.injectLazy
 
 class AniDong : ParsedAnimeHttpSource() {
@@ -64,19 +63,19 @@ class AniDong : ParsedAnimeHttpSource() {
     override fun latestUpdatesNextPageSelector() = "div.paginacao > a.next"
 
     // =============================== Search ===============================
-    override fun fetchSearchAnime(page: Int, query: String, filters: AnimeFilterList): Observable<AnimesPage> {
+    override suspend fun getSearchAnime(page: Int, query: String, filters: AnimeFilterList): AnimesPage {
         return if (query.startsWith(PREFIX_SEARCH)) { // URL intent handler
             val id = query.removePrefix(PREFIX_SEARCH)
             client.newCall(GET("$baseUrl/anime/$id"))
-                .asObservableSuccess()
-                .map(::searchAnimeByIdParse)
+                .awaitSuccess()
+                .use(::searchAnimeByIdParse)
         } else {
-            super.fetchSearchAnime(page, query, filters)
+            super.getSearchAnime(page, query, filters)
         }
     }
 
     private fun searchAnimeByIdParse(response: Response): AnimesPage {
-        val details = animeDetailsParse(response.use { it.asJsoup() })
+        val details = animeDetailsParse(response.asJsoup())
         return AnimesPage(listOf(details), false)
     }
 
@@ -84,7 +83,7 @@ class AniDong : ParsedAnimeHttpSource() {
 
     private val nonce by lazy {
         client.newCall(GET("$baseUrl/?js_global=1&ver=6.2.2")).execute()
-            .use { it.body.string() }
+            .body.string()
             .substringAfter("search_nonce")
             .substringAfter("'")
             .substringBefore("'")
@@ -109,7 +108,7 @@ class AniDong : ParsedAnimeHttpSource() {
     }
 
     override fun searchAnimeParse(response: Response): AnimesPage {
-        val searchData: SearchResultDto = response.use { it.body.string() }
+        val searchData: SearchResultDto = response.body.string()
             .takeIf { it.trim() != "402" }
             ?.let(json::decodeFromString)
             ?: return AnimesPage(emptyList(), false)
@@ -128,15 +127,15 @@ class AniDong : ParsedAnimeHttpSource() {
     }
 
     override fun searchAnimeSelector(): String {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     override fun searchAnimeFromElement(element: Element): SAnime {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     override fun searchAnimeNextPageSelector(): String? {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     // =========================== Anime Details ============================
@@ -172,15 +171,15 @@ class AniDong : ParsedAnimeHttpSource() {
 
     // ============================== Episodes ==============================
     override fun episodeListSelector(): String {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     override fun episodeFromElement(element: Element): SEpisode {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     override fun episodeListParse(response: Response): List<SEpisode> {
-        val doc = getRealDoc(response.use { it.asJsoup() })
+        val doc = getRealDoc(response.asJsoup())
 
         val id = doc.selectFirst("link[rel=shortlink]")!!.attr("href").substringAfter("=")
         val body = FormBody.Builder()
@@ -189,7 +188,7 @@ class AniDong : ParsedAnimeHttpSource() {
             .build()
 
         val res = client.newCall(POST("$baseUrl/api", apiHeaders, body)).execute()
-            .use { it.body.string() }
+            .body.string()
         val data = json.decodeFromString<EpisodeListDto>(res)
 
         return buildList {
@@ -208,7 +207,7 @@ class AniDong : ParsedAnimeHttpSource() {
 
     // ============================ Video Links =============================
     override fun videoListParse(response: Response): List<Video> {
-        val doc = response.use { it.asJsoup() }
+        val doc = response.asJsoup()
         return doc.select("div.player_option").flatMap {
             val url = it.attr("data-playerlink")
             val playerName = it.text().trim()
@@ -218,7 +217,7 @@ class AniDong : ParsedAnimeHttpSource() {
 
     private fun videosFromUrl(url: String, playerName: String): List<Video> {
         val scriptData = client.newCall(GET(url, apiHeaders)).execute()
-            .use { it.asJsoup() }
+            .asJsoup()
             .selectFirst("script:containsData(sources)")
             ?.data() ?: return emptyList()
 
@@ -234,15 +233,15 @@ class AniDong : ParsedAnimeHttpSource() {
     }
 
     override fun videoFromElement(element: Element): Video {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     override fun videoListSelector(): String {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     override fun videoUrlParse(document: Document): String {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     // ============================= Utilities ==============================
@@ -251,7 +250,7 @@ class AniDong : ParsedAnimeHttpSource() {
 
         return document.selectFirst(".episodioControleItem:has(i.ri-grid-fill)")?.let {
             client.newCall(GET(it.attr("href"), headers)).execute()
-                .use { req -> req.asJsoup() }
+                .asJsoup()
         } ?: document
     }
 

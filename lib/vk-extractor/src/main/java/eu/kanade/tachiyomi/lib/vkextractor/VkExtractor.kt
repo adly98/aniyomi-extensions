@@ -3,7 +3,6 @@ package eu.kanade.tachiyomi.lib.vkextractor
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.network.GET
 import okhttp3.Headers
-import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 
 class VkExtractor(private val client: OkHttpClient, private val headers: Headers) {
@@ -23,7 +22,7 @@ class VkExtractor(private val client: OkHttpClient, private val headers: Headers
 
     fun videosFromUrl(url: String, prefix: String = ""): List<Video> {
         val data = client.newCall(GET(url, documentHeaders)).execute()
-            .use { it.body.string() }
+            .body.string()
 
         return REGEX_VIDEO.findAll(data).map {
             val quality = it.groupValues[1]

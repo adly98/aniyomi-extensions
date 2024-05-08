@@ -15,13 +15,15 @@ class StreamWishExtractor(private val client: OkHttpClient, private val headers:
 
     fun videosFromUrl(url: String, videoNameGen: (String) -> String = { quality -> "StreamWish - $quality" }): List<Video> {
         val doc = client.newCall(GET(url, headers)).execute()
-            .use { it.asJsoup() }
+            .asJsoup()
         // Sometimes the script body is packed, sometimes it isn't
         val scriptBody = doc.selectFirst("script:containsData(m3u8)")?.data()
             ?.let { script ->
                 if (script.contains("eval(function(p,a,c")) {
                     JsUnpacker.unpackAndCombine(script)
-                } else script
+                } else {
+                    script
+                }
             }
 
         val masterUrl = scriptBody

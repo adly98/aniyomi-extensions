@@ -2,20 +2,19 @@ package eu.kanade.tachiyomi.lib.gogostreamextractor
 
 import android.util.Base64
 import eu.kanade.tachiyomi.animesource.model.Video
+import eu.kanade.tachiyomi.lib.playlistutils.PlaylistUtils
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
 import kotlinx.serialization.json.Json
 import okhttp3.Headers
-import eu.kanade.tachiyomi.lib.playlistutils.PlaylistUtils
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
-import java.lang.Exception
-import java.util.Locale
 import org.jsoup.nodes.Element
+import uy.kohesive.injekt.injectLazy
+import java.lang.Exception
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
-import uy.kohesive.injekt.injectLazy
 
 class GogoStreamExtractor(private val client: OkHttpClient) {
     private val json: Json by injectLazy()
@@ -28,7 +27,7 @@ class GogoStreamExtractor(private val client: OkHttpClient) {
 
     fun videosFromUrl(serverUrl: String): List<Video> {
         return runCatching {
-            val document = client.newCall(GET(serverUrl)).execute().use { it.asJsoup() }
+            val document = client.newCall(GET(serverUrl)).execute().asJsoup()
             val iv = document.selectFirst("div.wrapper")!!.getBytesAfter("container-")
             val secretKey = document.selectFirst("body[class]")!!.getBytesAfter("container-")
             val decryptionKey = document.selectFirst("div.videocontent")!!.getBytesAfter("videocontent-")
@@ -55,7 +54,7 @@ class GogoStreamExtractor(private val client: OkHttpClient) {
                         "XMLHttpRequest",
                     ),
                 ),
-            ).execute().use { it.body.string() }
+            ).execute().body.string()
 
             val data = json.decodeFromString<EncryptedDataDto>(jsonResponse).data
             val sourceList = cryptoHandler(data, iv, decryptionKey, false)

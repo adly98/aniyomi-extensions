@@ -3,7 +3,7 @@ package eu.kanade.tachiyomi.animeextension.tr.hdfilmcehennemi
 import android.app.Application
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
-import eu.kanade.tachiyomi.animeextension.tr.hdfilmcehennemi.extractors.RapidrameExtractor
+import eu.kanade.tachiyomi.animeextension.tr.hdfilmcehennemi.extractors.CloseloadExtractor
 import eu.kanade.tachiyomi.animeextension.tr.hdfilmcehennemi.extractors.VidmolyExtractor
 import eu.kanade.tachiyomi.animeextension.tr.hdfilmcehennemi.extractors.XBetExtractor
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
@@ -15,25 +15,21 @@ import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
-import eu.kanade.tachiyomi.network.asObservableSuccess
+import eu.kanade.tachiyomi.network.await
+import eu.kanade.tachiyomi.network.awaitSuccess
 import eu.kanade.tachiyomi.util.asJsoup
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.runBlocking
+import eu.kanade.tachiyomi.util.parallelCatchingFlatMapBlocking
+import eu.kanade.tachiyomi.util.parallelMapBlocking
+import eu.kanade.tachiyomi.util.parseAs
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.json.Json
 import okhttp3.FormBody
 import okhttp3.MultipartBody
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import rx.Observable
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import uy.kohesive.injekt.injectLazy
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -41,19 +37,15 @@ class HDFilmCehennemi : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val name = "HDFilmCehennemi"
 
-    override val baseUrl = "https://www.hdfilmcehennemi.de"
+    override val baseUrl = "https://www.hdfilmcehennemi.us"
 
     override val lang = "tr"
 
     override val supportsLatest = true
 
-    override val client = network.cloudflareClient
-
     override fun headersBuilder() = super.headersBuilder()
         .add("Referer", "$baseUrl/")
         .add("Origin", baseUrl)
-
-    private val json: Json by injectLazy()
 
     private val preferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
@@ -84,19 +76,19 @@ class HDFilmCehennemi : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // =============================== Search ===============================
     override fun getFilterList() = HDFilmCehennemiFilters.FILTER_LIST
 
-    override fun fetchSearchAnime(page: Int, query: String, filters: AnimeFilterList): Observable<AnimesPage> {
+    override suspend fun getSearchAnime(page: Int, query: String, filters: AnimeFilterList): AnimesPage {
         return if (query.startsWith(PREFIX_SEARCH)) { // URL intent handler
             val id = query.removePrefix(PREFIX_SEARCH)
             client.newCall(GET("$baseUrl/$id"))
-                .asObservableSuccess()
-                .map(::searchAnimeByIdParse)
+                .awaitSuccess()
+                .use(::searchAnimeByIdParse)
         } else {
-            super.fetchSearchAnime(page, query, filters)
+            super.getSearchAnime(page, query, filters)
         }
     }
 
     private fun searchAnimeByIdParse(response: Response): AnimesPage {
-        val details = animeDetailsParse(response.use { it.asJsoup() })
+        val details = animeDetailsParse(response.asJsoup())
         return AnimesPage(listOf(details), false)
     }
 
@@ -170,7 +162,7 @@ class HDFilmCehennemi : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun searchAnimeFromElement(element: Element) = popularAnimeFromElement(element)
 
     override fun searchAnimeNextPageSelector(): String? {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     // =========================== Anime Details ============================
@@ -194,19 +186,17 @@ class HDFilmCehennemi : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     // ============================== Episodes ==============================
-    override fun fetchEpisodeList(anime: SAnime): Observable<List<SEpisode>> {
+    override suspend fun getEpisodeList(anime: SAnime): List<SEpisode> {
         // Series
-        if (anime.url.contains("/dizi/")) return super.fetchEpisodeList(anime)
+        if (anime.url.contains("/dizi/")) return super.getEpisodeList(anime)
 
         // Movies
-        return Observable.just(
-            listOf(
-                SEpisode.create().apply {
-                    url = anime.url
-                    name = "Movie"
-                    episode_number = 1F
-                },
-            ),
+        return listOf(
+            SEpisode.create().apply {
+                url = anime.url
+                name = "Movie"
+                episode_number = 1F
+            },
         )
     }
 
@@ -231,40 +221,39 @@ class HDFilmCehennemi : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     // ============================ Video Links =============================
     private val vidmolyExtractor by lazy { VidmolyExtractor(client, headers) }
-    private val rapidrameExtractor by lazy { RapidrameExtractor(client, headers, json) }
-    private val xbetExtractor by lazy { XBetExtractor(client, headers, json) }
+    private val closeloadExtractor by lazy { CloseloadExtractor(client, headers) }
+    private val xbetExtractor by lazy { XBetExtractor(client, headers) }
 
     override fun videoListParse(response: Response): List<Video> {
-        val doc = response.use { it.asJsoup() }
+        val doc = response.asJsoup()
 
         return doc.select("div.card-body > nav > a:not([href^=#])")
             .drop(1)
-            .parallelMap { client.newCall(GET(it.absUrl("href") + "/")).execute().use { it.asJsoup() } }
+            .parallelMapBlocking { client.newCall(GET(it.absUrl("href") + "/")).await().asJsoup() }
             .let { listOf(doc) + it }
-            .mapNotNull { it.selectFirst("div.card-video > iframe")?.attr("data-src") }
+            .mapNotNull { it.selectFirst("div.card-video > iframe") }
+            .map { it.attr("data-src").ifBlank { it.attr("src") } }
             .filter(String::isNotBlank)
-            .parallelMap { url ->
-                runCatching {
-                    when {
-                        url.contains("vidmoly") -> vidmolyExtractor.videosFromUrl(url)
-                        url.contains("$baseUrl/playerr") -> rapidrameExtractor.videosFromUrl(url)
-                        url.contains("trstx.org") -> xbetExtractor.videosFromUrl(url)
-                        else -> emptyList()
-                    }
-                }.getOrNull().orEmpty()
-            }.flatten().ifEmpty { throw Exception("No videos available xD") }
+            .parallelCatchingFlatMapBlocking { url ->
+                when {
+                    url.contains("https://closeload") -> closeloadExtractor.videosFromUrl(url)
+                    url.contains("vidmoly") -> vidmolyExtractor.videosFromUrl(url)
+                    url.contains("trstx.org") -> xbetExtractor.videosFromUrl(url)
+                    else -> emptyList()
+                }
+            }
     }
 
     override fun videoListSelector(): String {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     override fun videoFromElement(element: Element): Video {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     override fun videoUrlParse(document: Document): String {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     // ============================== Settings ==============================
@@ -287,15 +276,6 @@ class HDFilmCehennemi : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     // ============================= Utilities ==============================
-    private inline fun <reified T> Response.parseAs(): T {
-        return use { it.body.string() }.let(json::decodeFromString)
-    }
-
-    private inline fun <A, B> Iterable<A>.parallelMap(crossinline f: suspend (A) -> B): List<B> =
-        runBlocking {
-            map { async(Dispatchers.Default) { f(it) } }.awaitAll()
-        }
-
     override fun List<Video>.sort(): List<Video> {
         val quality = preferences.getString(PREF_QUALITY_KEY, PREF_QUALITY_DEFAULT)!!
 

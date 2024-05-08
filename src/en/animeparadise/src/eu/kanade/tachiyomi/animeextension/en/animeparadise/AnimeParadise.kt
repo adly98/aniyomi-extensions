@@ -15,9 +15,9 @@ import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
+import eu.kanade.tachiyomi.util.parseAs
 import kotlinx.serialization.json.Json
 import okhttp3.HttpUrl.Companion.toHttpUrl
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import uy.kohesive.injekt.Injekt
@@ -35,8 +35,6 @@ class AnimeParadise : ConfigurableAnimeSource, AnimeHttpSource() {
     override val lang = "en"
 
     override val supportsLatest = true
-
-    override val client: OkHttpClient = network.cloudflareClient
 
     private val json: Json by injectLazy()
 
@@ -120,7 +118,7 @@ class AnimeParadise : ConfigurableAnimeSource, AnimeHttpSource() {
     }
 
     override fun animeDetailsParse(response: Response): SAnime {
-        val document = response.use { it.asJsoup() }
+        val document = response.asJsoup()
         val data = document.selectFirst("script#__NEXT_DATA__")?.data() ?: return SAnime.create()
 
         return json.decodeFromString<AnimeDetails>(data).props.pageProps.data.toSAnime()
@@ -143,7 +141,7 @@ class AnimeParadise : ConfigurableAnimeSource, AnimeHttpSource() {
     override fun videoListRequest(episode: SEpisode): Request = GET(baseUrl + episode.url, headers = docHeaders)
 
     override fun videoListParse(response: Response): List<Video> {
-        val document = response.use { it.asJsoup() }
+        val document = response.asJsoup()
         val data = json.decodeFromString<VideoData>(
             document.selectFirst("script#__NEXT_DATA__")!!.data(),
         ).props.pageProps
@@ -194,11 +192,6 @@ class AnimeParadise : ConfigurableAnimeSource, AnimeHttpSource() {
                 { Regex("""(\d+)p""").find(it.quality)?.groupValues?.get(1)?.toIntOrNull() ?: 0 },
             ),
         ).reversed()
-    }
-
-    private inline fun <reified T> Response.parseAs(): T {
-        val responseBody = use { it.body.string() }
-        return json.decodeFromString(responseBody)
     }
 
     companion object {

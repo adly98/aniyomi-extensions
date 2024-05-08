@@ -1,20 +1,15 @@
-apply plugin: 'com.android.application'
-apply plugin: 'kotlin-android'
-
 ext {
     extName = 'AnimeLatinoHD'
-    pkgNameSuffix = 'es.animelatinohd'
     extClass = '.AnimeLatinoHD'
-    extVersionCode = 29
-    libVersion = '13'
-}
-
-dependencies {
-    implementation(project(':lib-filemoon-extractor'))
-    implementation(project(':lib-streamtape-extractor'))
-    implementation(project(':lib-okru-extractor'))
-    implementation(project(':lib-dood-extractor'))
-    implementation(project(':lib-streamwish-extractor'))
+    extVersionCode = 32
 }
 
 apply from: "$rootDir/common.gradle"
+
+dependencies {
+    implementation(project(':lib:filemoon-extractor'))
+    implementation(project(':lib:streamtape-extractor'))
+    implementation(project(':lib:okru-extractor'))
+    implementation(project(':lib:dood-extractor'))
+    implementation(project(':lib:streamwish-extractor'))
+}

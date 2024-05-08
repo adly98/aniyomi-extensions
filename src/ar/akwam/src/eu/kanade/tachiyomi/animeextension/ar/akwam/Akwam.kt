@@ -15,26 +15,22 @@ import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
 import okhttp3.Headers
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.lang.Exception
 
 class Akwam : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val name = "أكوام"
 
-    override val baseUrl = "https://akwam.im"
+    override val baseUrl = "https://akw-cdn1.link"
 
     override val lang = "ar"
 
     override val supportsLatest = false
-
-    override val client: OkHttpClient = network.cloudflareClient
 
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
@@ -100,7 +96,7 @@ class Akwam : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
-        val iframe = "https://akwam.im/watch" + document.select("a.link-show").attr("href").substringAfter("watch") + "/" + document.ownerDocument()!!.select("input#page_id").attr("value")
+        val iframe = "https://akw-cdn1.link/watch" + document.select("a.link-show").attr("href").substringAfter("watch") + "/" + document.ownerDocument()!!.select("input#page_id").attr("value")
         val referer = response.request.url.toString()
         val refererHeaders = Headers.headersOf("referer", referer)
         val iframeResponse = client.newCall(GET(iframe, refererHeaders))
@@ -132,7 +128,7 @@ class Akwam : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return this
     }
 
-    override fun videoUrlParse(document: Document) = throw Exception("not used")
+    override fun videoUrlParse(document: Document) = throw UnsupportedOperationException()
 
     // Search
 
@@ -194,13 +190,13 @@ class Akwam : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     // Latest
 
-    override fun latestUpdatesNextPageSelector(): String = throw Exception("Not used")
+    override fun latestUpdatesNextPageSelector(): String = throw UnsupportedOperationException()
 
-    override fun latestUpdatesFromElement(element: Element): SAnime = throw Exception("Not used")
+    override fun latestUpdatesFromElement(element: Element): SAnime = throw UnsupportedOperationException()
 
-    override fun latestUpdatesRequest(page: Int): Request = throw Exception("Not used")
+    override fun latestUpdatesRequest(page: Int): Request = throw UnsupportedOperationException()
 
-    override fun latestUpdatesSelector(): String = throw Exception("Not used")
+    override fun latestUpdatesSelector(): String = throw UnsupportedOperationException()
 
     // Filters
 

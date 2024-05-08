@@ -17,6 +17,7 @@ import eu.kanade.tachiyomi.lib.doodextractor.DoodExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.util.asJsoup
+import eu.kanade.tachiyomi.util.parseAs
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -39,8 +40,6 @@ class AnimesZone : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override val lang = "pt-BR"
 
     override val supportsLatest = true
-
-    override val client = network.cloudflareClient
 
     override fun headersBuilder() = super.headersBuilder()
         .add("Referer", "$baseUrl/")
@@ -196,7 +195,7 @@ class AnimesZone : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     // ============================== Episodes ==============================
     override fun episodeListParse(response: Response): List<SEpisode> {
-        val document = response.use { it.asJsoup() }
+        val document = response.asJsoup()
 
         val singleVideo = document.selectFirst("div.anime__video__player")
 
@@ -222,7 +221,7 @@ class AnimesZone : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
                     while (nextPageUrl != null) {
                         val seasonDocument = client.newCall(GET(nextPageUrl)).execute()
-                            .use { it.asJsoup() }
+                            .asJsoup()
 
                         seasonDocument.select(episodeListSelector()).forEach { seasonEp ->
                             add(episodeFromElement(seasonEp, size + 1, name))
@@ -256,11 +255,11 @@ class AnimesZone : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }
     }
 
-    override fun episodeFromElement(element: Element): SEpisode = throw Exception("Not used")
+    override fun episodeFromElement(element: Element): SEpisode = throw UnsupportedOperationException()
 
     // ============================ Video Links =============================
     override fun videoListParse(response: Response): List<Video> {
-        val document = response.use { it.asJsoup() }
+        val document = response.asJsoup()
 
         val videoList = document.select("div#playeroptions li[data-post]").flatMap { vid ->
             val jsonHeaders = headersBuilder()
@@ -282,7 +281,7 @@ class AnimesZone : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 url.startsWith("https://dood") -> DoodExtractor(client).videosFromUrl(url, vid.text().trim())
                 "https://gojopoolt" in url -> {
                     client.newCall(GET(url, headers)).execute()
-                        .use { it.asJsoup() }
+                        .asJsoup()
                         .selectFirst("script:containsData(sources:)")
                         ?.data()
                         ?.let(BloggerJWPlayerExtractor::videosFromScript)
@@ -299,7 +298,7 @@ class AnimesZone : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     private fun videosFromInternalUrl(url: String): List<Video> {
         val videoDocument = client.newCall(GET(url, headers)).execute()
-            .use { it.asJsoup() }
+            .asJsoup()
 
         val script = videoDocument.selectFirst("script:containsData(decodeURIComponent)")?.data()
             ?.let(::getDecrypted)
@@ -317,7 +316,7 @@ class AnimesZone : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     private fun extractBloggerVideos(url: String, name: String): List<Video> {
         return client.newCall(GET(url, headers)).execute()
-            .use { it.body.string() }
+            .body.string()
             .takeIf { !it.contains("errorContainer") }
             .let { it ?: return emptyList() }
             .substringAfter("\"streams\":[")
@@ -335,11 +334,11 @@ class AnimesZone : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             }
     }
 
-    override fun videoFromElement(element: Element): Video = throw Exception("Not Used")
+    override fun videoFromElement(element: Element): Video = throw UnsupportedOperationException()
 
-    override fun videoListSelector(): String = throw Exception("Not Used")
+    override fun videoListSelector(): String = throw UnsupportedOperationException()
 
-    override fun videoUrlParse(document: Document): String = throw Exception("Not Used")
+    override fun videoUrlParse(document: Document): String = throw UnsupportedOperationException()
 
     // ============================== Settings ==============================
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
@@ -377,10 +376,6 @@ class AnimesZone : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return input.substringAfter("=").split("%2C").joinToString(",") {
             "\"$it\""
         }
-    }
-
-    private inline fun <reified T> Response.parseAs(): T {
-        return use { it.body.string() }.let(json::decodeFromString)
     }
 
     @Serializable

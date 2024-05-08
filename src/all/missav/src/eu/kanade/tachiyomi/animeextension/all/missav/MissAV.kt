@@ -20,7 +20,6 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Element
-import rx.Observable
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -33,8 +32,6 @@ class MissAV : AnimeHttpSource(), ConfigurableAnimeSource {
     override val baseUrl = "https://missav.com"
 
     override val supportsLatest = true
-
-    override val client = network.cloudflareClient
 
     override fun headersBuilder() = super.headersBuilder()
         .add("Referer", "$baseUrl/")
@@ -51,7 +48,7 @@ class MissAV : AnimeHttpSource(), ConfigurableAnimeSource {
         GET("$baseUrl/en/today-hot?page=$page", headers)
 
     override fun popularAnimeParse(response: Response): AnimesPage {
-        val document = response.use { it.asJsoup() }
+        val document = response.asJsoup()
 
         val entries = document.select("div.thumbnail").map { element ->
             SAnime.create().apply {
@@ -98,7 +95,7 @@ class MissAV : AnimeHttpSource(), ConfigurableAnimeSource {
     override fun searchAnimeParse(response: Response) = popularAnimeParse(response)
 
     override fun animeDetailsParse(response: Response): SAnime {
-        val document = response.use { it.asJsoup() }
+        val document = response.asJsoup()
 
         val jpTitle = document.select("div.text-secondary span:contains(title) + span").text()
         val siteCover = document.selectFirst("video.player")?.attr("abs:data-poster")
@@ -136,19 +133,17 @@ class MissAV : AnimeHttpSource(), ConfigurableAnimeSource {
             .joinToString()
             .takeIf(String::isNotBlank)
 
-    override fun fetchEpisodeList(anime: SAnime): Observable<List<SEpisode>> {
-        return Observable.just(
-            listOf(
-                SEpisode.create().apply {
-                    url = anime.url
-                    name = "Episode"
-                },
-            ),
+    override suspend fun getEpisodeList(anime: SAnime): List<SEpisode> {
+        return listOf(
+            SEpisode.create().apply {
+                url = anime.url
+                name = "Episode"
+            },
         )
     }
 
     override fun videoListParse(response: Response): List<Video> {
-        val document = response.use { it.asJsoup() }
+        val document = response.asJsoup()
 
         val playlists = document.selectFirst("script:containsData(function(p,a,c,k,e,d))")
             ?.data()
@@ -157,7 +152,7 @@ class MissAV : AnimeHttpSource(), ConfigurableAnimeSource {
 
         val masterPlaylist = playlists.substringAfter("source=\"").substringBefore("\";")
 
-        return playlistExtractor.extractFromHls(masterPlaylist)
+        return playlistExtractor.extractFromHls(masterPlaylist, referer = "$baseUrl/")
     }
 
     override fun List<Video>.sort(): List<Video> {
@@ -182,7 +177,7 @@ class MissAV : AnimeHttpSource(), ConfigurableAnimeSource {
     }
 
     override fun episodeListParse(response: Response): List<SEpisode> {
-        throw UnsupportedOperationException("Not Used")
+        throw UnsupportedOperationException()
     }
 
     private inline fun <reified T> List<*>.firstInstanceOrNull(): T? =

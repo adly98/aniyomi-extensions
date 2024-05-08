@@ -25,7 +25,8 @@ import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
-import eu.kanade.tachiyomi.network.asObservableSuccess
+import eu.kanade.tachiyomi.network.awaitSuccess
+import eu.kanade.tachiyomi.util.parseAs
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -34,10 +35,9 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
-import rx.Observable
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.lang.Exception
+import uy.kohesive.injekt.injectLazy
 import java.util.Locale
 
 class KickAssAnime : ConfigurableAnimeSource, AnimeHttpSource() {
@@ -54,11 +54,10 @@ class KickAssAnime : ConfigurableAnimeSource, AnimeHttpSource() {
 
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
+            .clearBaseUrl()
     }
 
-    private val json = Json {
-        ignoreUnknownKeys = true
-    }
+    private val json: Json by injectLazy()
 
     // ============================== Popular ===============================
     override fun popularAnimeRequest(page: Int) = GET("$apiUrl/popular?page=$page")
@@ -93,7 +92,7 @@ class KickAssAnime : ConfigurableAnimeSource, AnimeHttpSource() {
             .parseAs()
     }
 
-    override fun fetchEpisodeList(anime: SAnime): Observable<List<SEpisode>> {
+    override suspend fun getEpisodeList(anime: SAnime): List<SEpisode> {
         val languages = client.newCall(
             GET("$apiUrl${anime.url}/language"),
         ).execute().parseAs<LanguagesDto>()
@@ -118,7 +117,7 @@ class KickAssAnime : ConfigurableAnimeSource, AnimeHttpSource() {
             }
         }
 
-        return Observable.just(episodes.reversed())
+        return episodes.reversed()
     }
 
     override fun episodeListParse(response: Response): List<SEpisode> {
@@ -147,21 +146,9 @@ class KickAssAnime : ConfigurableAnimeSource, AnimeHttpSource() {
     }
 
     // =========================== Anime Details ============================
-    // Uncomment when extensions-lib v14 gets released
-    // tested with extensions-lib:9d3dcb0
-    // override fun getAnimeUrl(anime: SAnime) = "$baseUrl${anime.url}"
+    override fun getAnimeUrl(anime: SAnime) = "$baseUrl${anime.url}"
 
-    override fun animeDetailsRequest(anime: SAnime): Request = GET(baseUrl + anime.url)
-
-    override fun fetchAnimeDetails(anime: SAnime): Observable<SAnime> {
-        return client.newCall(animeDetailsRequestInternal(anime))
-            .asObservableSuccess()
-            .map { response ->
-                animeDetailsParse(response).apply { initialized = true }
-            }
-    }
-
-    private fun animeDetailsRequestInternal(anime: SAnime) = GET(apiUrl + anime.url)
+    override fun animeDetailsRequest(anime: SAnime) = GET(apiUrl + anime.url)
 
     override fun animeDetailsParse(response: Response): SAnime {
         val languages = client.newCall(
@@ -198,8 +185,8 @@ class KickAssAnime : ConfigurableAnimeSource, AnimeHttpSource() {
     }
 
     // =============================== Search ===============================
-    override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request = throw Exception("Not used")
-    override fun searchAnimeParse(response: Response) = throw Exception("Not used")
+    override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request = throw UnsupportedOperationException()
+    override fun searchAnimeParse(response: Response) = throw UnsupportedOperationException()
 
     private fun searchAnimeParse(response: Response, page: Int): AnimesPage {
         val path = response.request.url.encodedPath
@@ -245,17 +232,17 @@ class KickAssAnime : ConfigurableAnimeSource, AnimeHttpSource() {
         }
     }
 
-    override fun fetchSearchAnime(page: Int, query: String, filters: AnimeFilterList): Observable<AnimesPage> {
+    override suspend fun getSearchAnime(page: Int, query: String, filters: AnimeFilterList): AnimesPage {
         return if (query.startsWith(PREFIX_SEARCH)) { // URL intent handler
             val slug = query.removePrefix(PREFIX_SEARCH)
             client.newCall(GET("$baseUrl/api/show/$slug"))
-                .asObservableSuccess()
-                .map(::searchAnimeBySlugParse)
+                .awaitSuccess()
+                .use(::searchAnimeBySlugParse)
         } else {
             val params = KickAssAnimeFilters.getSearchParameters(filters)
             return client.newCall(searchAnimeRequest(page, query, params))
-                .asObservableSuccess()
-                .map { response ->
+                .awaitSuccess()
+                .let { response ->
                     searchAnimeParse(response, page)
                 }
         }
@@ -280,10 +267,6 @@ class KickAssAnime : ConfigurableAnimeSource, AnimeHttpSource() {
 
     // ============================= Utilities ==============================
 
-    private inline fun <reified T> Response.parseAs(): T {
-        return body.string().let(json::decodeFromString)
-    }
-
     private fun String.getLocale(): String {
         return LOCALE.firstOrNull { it.first == this }?.second ?: ""
     }
@@ -305,6 +288,17 @@ class KickAssAnime : ConfigurableAnimeSource, AnimeHttpSource() {
                 { Regex("""([\d,]+) [KMGTPE]B/s""").find(it.quality)?.groupValues?.get(1)?.replace(",", ".")?.toFloatOrNull() ?: 0F },
             ),
         ).reversed()
+    }
+
+    private fun SharedPreferences.clearBaseUrl(): SharedPreferences {
+        if (getString(PREF_DOMAIN_KEY, "")!! in PREF_DOMAIN_ENTRY_VALUES) {
+            return this
+        }
+        edit()
+            .remove(PREF_DOMAIN_KEY)
+            .putString(PREF_DOMAIN_KEY, PREF_DOMAIN_DEFAULT)
+            .apply()
+        return this
     }
 
     companion object {
@@ -340,9 +334,9 @@ class KickAssAnime : ConfigurableAnimeSource, AnimeHttpSource() {
 
         private const val PREF_DOMAIN_KEY = "preferred_domain"
         private const val PREF_DOMAIN_TITLE = "Preferred domain (requires app restart)"
-        private const val PREF_DOMAIN_DEFAULT = "https://kickassanime.am"
-        private val PREF_DOMAIN_ENTRIES = arrayOf("kickassanime.am", "kaas.to", "kaas.ro")
-        private val PREF_DOMAIN_ENTRY_VALUES = arrayOf("https://kickassanime.am", "https://kaas.to", "https://kaas.ro")
+        private const val PREF_DOMAIN_DEFAULT = "https://kaas.to"
+        private val PREF_DOMAIN_ENTRIES = arrayOf("kaas.to", "kaas.ro", "kickassanimes.io", "www1.kickassanime.mx")
+        private val PREF_DOMAIN_ENTRY_VALUES = PREF_DOMAIN_ENTRIES.map { "https://$it" }.toTypedArray()
 
         private const val PREF_HOSTER_KEY = "hoster_selection"
         private const val PREF_HOSTER_TITLE = "Enable/Disable Hosts"

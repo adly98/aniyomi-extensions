@@ -1,11 +1,8 @@
 package eu.kanade.tachiyomi.animeextension.ar.arabseed
 
 import android.app.Application
-import android.widget.Toast
-import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
-import eu.kanade.tachiyomi.animeextension.BuildConfig
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilter
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
@@ -18,10 +15,7 @@ import eu.kanade.tachiyomi.lib.streamwishextractor.StreamWishExtractor
 import eu.kanade.tachiyomi.lib.voeextractor.VoeExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.runBlocking
+import eu.kanade.tachiyomi.util.parallelCatchingFlatMapBlocking
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
@@ -34,15 +28,13 @@ class ArabSeed : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val name = "عرب سيد"
 
-    override val baseUrl by lazy {
-        preferences.getString(PREF_DOMAIN_KEY, PREF_DOMAIN_DEFAULT)!!
-    }
+    // TODO: Check frequency of url changes to potentially
+    // add back overridable baseurl preference
+    override val baseUrl = "https://m.asd.homes"
 
     override val lang = "ar"
 
     override val supportsLatest = false
-
-    override val client = network.cloudflareClient
 
     override fun headersBuilder() = super.headersBuilder().add("Referer", baseUrl)
 
@@ -97,11 +89,11 @@ class ArabSeed : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun videoListSelector() = "div.containerServers ul li"
 
     private fun videosFromElement(document: Document): List<Video> {
-        return document.select(videoListSelector()).parallelMap { element ->
+        return document.select(videoListSelector()).parallelCatchingFlatMapBlocking { element ->
             val quality = element.text()
             val embedUrl = element.attr("data-link")
-            runCatching { getVideosFromUrl(embedUrl, quality) }.getOrElse { emptyList() }
-        }.flatten()
+            getVideosFromUrl(embedUrl, quality)
+        }
     }
 
     private val doodExtractor by lazy { DoodExtractor(client) }
@@ -112,19 +104,19 @@ class ArabSeed : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return when {
             "reviewtech" in url || "reviewrate" in url -> {
                 val iframeResponse = client.newCall(GET(url)).execute()
-                    .use { it.asJsoup() }
+                    .asJsoup()
                 val videoUrl = iframeResponse.selectFirst("source")!!.attr("abs:src")
                 listOf(Video(videoUrl, quality + "p", videoUrl))
             }
             "dood" in url -> doodExtractor.videosFromUrl(url)
             "fviplions" in url || "wish" in url -> streamwishExtractor.videosFromUrl(url)
-            "voe.sx" in url -> voeExtractor.videoFromUrl(url)?.let(::listOf)
+            "voe.sx" in url -> voeExtractor.videosFromUrl(url)
             else -> null
         } ?: emptyList()
     }
 
-    override fun videoFromElement(element: Element) = throw Exception("not used")
-    override fun videoUrlParse(document: Document) = throw Exception("not used")
+    override fun videoFromElement(element: Element) = throw UnsupportedOperationException()
+    override fun videoUrlParse(document: Document) = throw UnsupportedOperationException()
 
     override fun List<Video>.sort(): List<Video> {
         val quality = preferences.getString(PREF_QUALITY_KEY, PREF_QUALITY_DEFAULT)!!
@@ -207,30 +199,13 @@ class ArabSeed : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     )
 
     // =============================== Latest ===============================
-    override fun latestUpdatesNextPageSelector(): String? = throw Exception("Not used")
-    override fun latestUpdatesFromElement(element: Element): SAnime = throw Exception("Not used")
-    override fun latestUpdatesRequest(page: Int): Request = throw Exception("Not used")
-    override fun latestUpdatesSelector(): String = throw Exception("Not used")
+    override fun latestUpdatesNextPageSelector(): String? = throw UnsupportedOperationException()
+    override fun latestUpdatesFromElement(element: Element): SAnime = throw UnsupportedOperationException()
+    override fun latestUpdatesRequest(page: Int): Request = throw UnsupportedOperationException()
+    override fun latestUpdatesSelector(): String = throw UnsupportedOperationException()
 
     // =============================== Preferences ===============================
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
-        val defaultDomainPref = EditTextPreference(screen.context).apply {
-            key = PREF_DOMAIN_KEY
-            title = PREF_DOMAIN_TITLE
-            dialogTitle = PREF_DOMAIN_DIALOG_TITLE
-            dialogMessage = PREF_DOMAIN_DIALOG_MESSAGE
-            setDefaultValue(PREF_DOMAIN_DEFAULT)
-            summary = PREF_DOMAIN_SUMMARY
-
-            setOnPreferenceChangeListener { _, newValue ->
-                runCatching {
-                    val value = (newValue as String).ifEmpty { PREF_DOMAIN_DEFAULT }
-                    Toast.makeText(screen.context, PREF_DOMAIN_TOAST, Toast.LENGTH_LONG).show()
-                    preferences.edit().putString(key, value).commit()
-                }.getOrDefault(false)
-            }
-        }
-
         val videoQualityPref = ListPreference(screen.context).apply {
             key = PREF_QUALITY_KEY
             title = PREF_QUALITY_TITLE
@@ -246,26 +221,11 @@ class ArabSeed : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 preferences.edit().putString(key, entry).commit()
             }
         }
-        screen.addPreference(defaultDomainPref)
         screen.addPreference(videoQualityPref)
     }
 
     // ============================= Utilities ==============================
-    private inline fun <A, B> Iterable<A>.parallelMap(crossinline f: suspend (A) -> B): List<B> =
-        runBlocking {
-            map { async(Dispatchers.Default) { f(it) } }.awaitAll()
-        }
-
     companion object {
-        // From egydead(ar)
-        private const val PREF_DOMAIN_KEY = "default_domain_v${BuildConfig.VERSION_NAME}"
-        private const val PREF_DOMAIN_TITLE = "Override default domain with a custom, different one"
-        private const val PREF_DOMAIN_DEFAULT = "https://m95.arabseed.show"
-        private const val PREF_DOMAIN_DIALOG_TITLE = "Enter custom domain"
-        private const val PREF_DOMAIN_DIALOG_MESSAGE = "Default/Original domain: $PREF_DOMAIN_DEFAULT"
-        private const val PREF_DOMAIN_SUMMARY = "You can change the site domain from here"
-        private const val PREF_DOMAIN_TOAST = "Restart Aniyomi to apply changes"
-
         private const val PREF_QUALITY_KEY = "preferred_quality"
         private const val PREF_QUALITY_TITLE = "Preferred quality"
         private const val PREF_QUALITY_DEFAULT = "1080"

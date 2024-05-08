@@ -13,10 +13,10 @@ import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
+import eu.kanade.tachiyomi.network.await
 import eu.kanade.tachiyomi.util.asJsoup
+import eu.kanade.tachiyomi.util.parallelCatchingFlatMap
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -28,7 +28,6 @@ import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import rx.Observable
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
@@ -48,7 +47,7 @@ class UHDMovies : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     client.newBuilder()
                         .followRedirects(false)
                         .build()
-                        .newCall(GET("$baseUrl/")).execute().use { resp ->
+                        .newCall(GET("$baseUrl/")).await().use { resp ->
                             when (resp.code) {
                                 301 -> {
                                     (resp.headers["location"]?.substringBeforeLast("/") ?: baseUrl).also {
@@ -66,8 +65,6 @@ class UHDMovies : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override val lang = "en"
 
     override val supportsLatest = false
-
-    override val client = network.cloudflareClient
 
     private val json: Json by injectLazy()
 
@@ -91,13 +88,13 @@ class UHDMovies : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         "div#content  > nav.gridlove-pagination > a.next"
 
     // =============================== Latest ===============================
-    override fun latestUpdatesRequest(page: Int): Request = throw Exception("Not Used")
+    override fun latestUpdatesRequest(page: Int): Request = throw UnsupportedOperationException()
 
-    override fun latestUpdatesSelector(): String = throw Exception("Not Used")
+    override fun latestUpdatesSelector(): String = throw UnsupportedOperationException()
 
-    override fun latestUpdatesFromElement(element: Element): SAnime = throw Exception("Not Used")
+    override fun latestUpdatesFromElement(element: Element): SAnime = throw UnsupportedOperationException()
 
-    override fun latestUpdatesNextPageSelector(): String = throw Exception("Not Used")
+    override fun latestUpdatesNextPageSelector(): String = throw UnsupportedOperationException()
 
     // =============================== Search ===============================
     override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request {
@@ -127,7 +124,7 @@ class UHDMovies : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         find(text)?.groupValues?.get(1)?.let { Pair(text, it) }
 
     override fun episodeListParse(response: Response): List<SEpisode> {
-        val doc = response.use { it.asJsoup() }
+        val doc = response.asJsoup()
         val episodeElements = doc.select(episodeListSelector())
             .asSequence()
 
@@ -218,10 +215,10 @@ class UHDMovies : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun episodeListSelector(): String = "p:has(a[href*=?sid=],a[href*=r?key=]):has(a[class*=maxbutton])[style*=center]"
 
-    override fun episodeFromElement(element: Element): SEpisode = throw Exception("Not Used")
+    override fun episodeFromElement(element: Element): SEpisode = throw UnsupportedOperationException()
 
     // ============================ Video Links =============================
-    override fun fetchVideoList(episode: SEpisode): Observable<List<Video>> {
+    override suspend fun getVideoList(episode: SEpisode): List<Video> {
         val urlJson = json.decodeFromString<EpLinks>(episode.url)
 
         val videoList = urlJson.urls.parallelCatchingFlatMap { eplink ->
@@ -240,14 +237,14 @@ class UHDMovies : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             }
         }
 
-        return Observable.just(videoList.sort())
+        return videoList.sort()
     }
 
-    override fun videoFromElement(element: Element): Video = throw Exception("Not Used")
+    override fun videoFromElement(element: Element): Video = throw UnsupportedOperationException()
 
-    override fun videoListSelector(): String = throw Exception("Not Used")
+    override fun videoListSelector(): String = throw UnsupportedOperationException()
 
-    override fun videoUrlParse(document: Document): String = throw Exception("Not Used")
+    override fun videoUrlParse(document: Document): String = throw UnsupportedOperationException()
 
     // ============================= Utilities ==============================
     private val redirectBypasser by lazy { RedirectorBypasser(client, headers) }
@@ -263,7 +260,7 @@ class UHDMovies : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             client.newCall(GET(url)).execute()
         } else { return null }
 
-        val path = mediaResponse.use { it.body.string() }.substringAfter("replace(\"").substringBefore("\"")
+        val path = mediaResponse.body.string().substringAfter("replace(\"").substringBefore("\"")
 
         if (path == "/404") return null
 
@@ -278,7 +275,7 @@ class UHDMovies : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     private fun extractWorkerLinks(mediaUrl: String, quality: String, type: Int): List<Video> {
         val reqLink = mediaUrl.replace("/file/", "/wfile/") + "?type=$type"
-        val resp = client.newCall(GET(reqLink)).execute().use { it.asJsoup() }
+        val resp = client.newCall(GET(reqLink)).execute().asJsoup()
         val sizeMatch = SIZE_REGEX.find(resp.select("div.card-header").text().trim())
         val size = sizeMatch?.groups?.get(1)?.value?.let { " - $it" } ?: ""
         return resp.select("div.card-body div.mb-4 > a").mapIndexed { index, linkElement ->
@@ -298,7 +295,7 @@ class UHDMovies : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     private fun getDirectLink(url: String, action: String = "direct", newPath: String = "/file/"): String? {
-        val doc = client.newCall(GET(url, headers)).execute().use { it.asJsoup() }
+        val doc = client.newCall(GET(url, headers)).execute().asJsoup()
         val script = doc.selectFirst("script:containsData(async function taskaction)")
             ?.data()
             ?: return url
@@ -315,18 +312,18 @@ class UHDMovies : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
         val req = client.newCall(POST(url.replace("/file/", newPath), headers, form)).execute()
         return runCatching {
-            json.decodeFromString<DriveLeechDirect>(req.use { it.body.string() }).url
+            json.decodeFromString<DriveLeechDirect>(req.body.string()).url
         }.getOrNull()
     }
 
     private fun extractGDriveLink(mediaUrl: String, quality: String): List<Video> {
         val neoUrl = getDirectLink(mediaUrl) ?: mediaUrl
-        val response = client.newCall(GET(neoUrl)).execute().use { it.asJsoup() }
+        val response = client.newCall(GET(neoUrl)).execute().asJsoup()
         val gdBtn = response.selectFirst("div.card-body a.btn")!!
         val gdLink = gdBtn.attr("href")
         val sizeMatch = SIZE_REGEX.find(gdBtn.text())
         val size = sizeMatch?.groups?.get(1)?.value?.let { " - $it" } ?: ""
-        val gdResponse = client.newCall(GET(gdLink)).execute().use { it.asJsoup() }
+        val gdResponse = client.newCall(GET(gdLink)).execute().asJsoup()
         val link = gdResponse.select("form#download-form")
         return if (link.isNullOrEmpty()) {
             emptyList()
@@ -429,15 +426,6 @@ class UHDMovies : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     private fun EpLinks.toJson(): String {
         return json.encodeToString(this)
     }
-
-    private inline fun <A, B> Iterable<A>.parallelCatchingFlatMap(crossinline f: suspend (A) -> Iterable<B>): List<B> =
-        runBlocking {
-            map {
-                async(Dispatchers.Default) {
-                    runCatching { f(it) }.getOrElse { emptyList() }
-                }
-            }.awaitAll().flatten()
-        }
 
     private fun getDomainPrefSummary(): String =
         preferences.getString(PREF_DOMAIN_KEY, PREF_DOMAIN_DEFAULT)!!.let {

@@ -1,26 +1,19 @@
-plugins {
-    alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
-}
-
 ext {
     extName = 'Animerco'
-    pkgNameSuffix = 'ar.animerco'
     extClass = '.Animerco'
-    extVersionCode = 34
-    libVersion = '13'
-}
-
-dependencies {
-    implementation(project(':lib-uqload-extractor'))
-    implementation(project(':lib-gdriveplayer-extractor'))
-    implementation(project(':lib-streamtape-extractor'))
-    implementation(project(':lib-dood-extractor'))
-    implementation(project(':lib-vidbom-extractor'))
-    implementation(project(':lib-mp4upload-extractor'))
-    implementation(project(':lib-streamwish-extractor'))
-    implementation(project(':lib-yourupload-extractor'))
-    implementation(project(':lib-okru-extractor'))
+    extVersionCode = 36
 }
 
 apply from: "$rootDir/common.gradle"
+
+dependencies {
+    implementation(project(':lib:uqload-extractor'))
+    implementation(project(':lib:gdriveplayer-extractor'))
+    implementation(project(':lib:streamtape-extractor'))
+    implementation(project(':lib:dood-extractor'))
+    implementation(project(':lib:vidbom-extractor'))
+    implementation(project(':lib:mp4upload-extractor'))
+    implementation(project(':lib:streamwish-extractor'))
+    implementation(project(':lib:yourupload-extractor'))
+    implementation(project(':lib:okru-extractor'))
+}

@@ -44,8 +44,6 @@ class EnNovelas : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val supportsLatest = false
 
-    override val client: OkHttpClient = network.cloudflareClient
-
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
     }
@@ -120,7 +118,7 @@ class EnNovelas : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun episodeListSelector() = "uwu"
 
-    override fun episodeFromElement(element: Element) = throw Exception("not used")
+    override fun episodeFromElement(element: Element) = throw UnsupportedOperationException()
 
     private fun getNumberFromEpsString(epsStr: String): String {
         return epsStr.filter { it.isDigit() }
@@ -165,7 +163,7 @@ class EnNovelas : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             }
             if (link.contains("voe")) {
                 try {
-                    VoeExtractor(client).videoFromUrl(link, "Voex")?.let { videoList.add(it) }
+                    VoeExtractor(client).videosFromUrl(link).also(videoList::addAll)
                 } catch (_: Exception) {}
             }
             if (link.contains("vudeo")) {
@@ -197,11 +195,11 @@ class EnNovelas : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return videoList
     }
 
-    override fun videoListSelector() = throw Exception("not used")
+    override fun videoListSelector() = throw UnsupportedOperationException()
 
-    override fun videoUrlParse(document: Document) = throw Exception("not used")
+    override fun videoUrlParse(document: Document) = throw UnsupportedOperationException()
 
-    override fun videoFromElement(element: Element) = throw Exception("not used")
+    override fun videoFromElement(element: Element) = throw UnsupportedOperationException()
 
     override fun List<Video>.sort(): List<Video> {
         val quality = preferences.getString("preferred_quality", "Voex")
@@ -244,9 +242,9 @@ class EnNovelas : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }
         return AnimesPage(animeList, hasNextPage)
     }
-    override fun searchAnimeFromElement(element: Element): SAnime = throw Exception("not used")
-    override fun searchAnimeNextPageSelector(): String = throw Exception("not used")
-    override fun searchAnimeSelector(): String = throw Exception("not used")
+    override fun searchAnimeFromElement(element: Element): SAnime = throw UnsupportedOperationException()
+    override fun searchAnimeNextPageSelector(): String = throw UnsupportedOperationException()
+    override fun searchAnimeSelector(): String = throw UnsupportedOperationException()
 
     override fun animeDetailsParse(document: Document): SAnime {
         val anime = SAnime.create()
@@ -307,11 +305,11 @@ class EnNovelas : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 class VidmolyExtractor(private val client: OkHttpClient) {
     fun getVideoList(url: String, lang: String): List<Video> {
         val body = client.newCall(GET(url)).execute()
-            .use { it.body.string() }
+            .body.string()
         val playlistUrl = Regex("file:\"(\\S+?)\"").find(body)!!.groupValues.get(1)
         val headers = Headers.headersOf("Referer", "https://vidmoly.to")
         val playlistData = client.newCall(GET(playlistUrl, headers)).execute()
-            .use { it.body.string() }
+            .body.string()
 
         val separator = "#EXT-X-STREAM-INF:"
         return playlistData.substringAfter(separator).split(separator).map {

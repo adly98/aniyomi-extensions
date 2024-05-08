@@ -1,7 +1,6 @@
 package eu.kanade.tachiyomi.animeextension.pt.hentaistube
 
 import android.app.Application
-import android.content.SharedPreferences
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
 import eu.kanade.tachiyomi.animeextension.pt.hentaistube.HentaisTubeFilters.applyFilterParams
@@ -15,21 +14,17 @@ import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.lib.bloggerextractor.BloggerExtractor
 import eu.kanade.tachiyomi.network.GET
-import eu.kanade.tachiyomi.network.asObservableSuccess
+import eu.kanade.tachiyomi.network.await
+import eu.kanade.tachiyomi.network.awaitSuccess
 import eu.kanade.tachiyomi.util.asJsoup
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.Json
+import eu.kanade.tachiyomi.util.parallelCatchingFlatMapBlocking
+import eu.kanade.tachiyomi.util.parseAs
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import rx.Observable
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import uy.kohesive.injekt.injectLazy
 
 class HentaisTube : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
@@ -45,9 +40,7 @@ class HentaisTube : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         .add("Referer", baseUrl)
         .add("Origin", baseUrl)
 
-    private val json: Json by injectLazy()
-
-    private val preferences: SharedPreferences by lazy {
+    private val preferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
     }
 
@@ -83,18 +76,16 @@ class HentaisTube : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     private val animeList by lazy {
         val headers = headersBuilder().add("X-Requested-With", "XMLHttpRequest").build()
         client.newCall(GET("$baseUrl/json-lista-capas.php", headers)).execute()
-            .use { it.body.string() }
-            .let { json.decodeFromString<ItemsListDto>(it) }
-            .items
+            .parseAs<ItemsListDto>().items
             .asSequence()
     }
 
-    override fun fetchSearchAnime(page: Int, query: String, filters: AnimeFilterList): Observable<AnimesPage> {
+    override suspend fun getSearchAnime(page: Int, query: String, filters: AnimeFilterList): AnimesPage {
         return if (query.startsWith(PREFIX_SEARCH)) { // URL intent handler
             val id = query.removePrefix(PREFIX_SEARCH)
             client.newCall(GET("$baseUrl/$id"))
-                .asObservableSuccess()
-                .map(::searchAnimeByIdParse)
+                .awaitSuccess()
+                .use(::searchAnimeByIdParse)
         } else {
             val params = HentaisTubeFilters.getSearchParameters(filters).apply {
                 animeName = query
@@ -113,7 +104,7 @@ class HentaisTube : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     }
                 }
             }
-            Observable.just(AnimesPage(currentPage, hasNextPage))
+            AnimesPage(currentPage, hasNextPage)
         }
     }
 
@@ -125,19 +116,19 @@ class HentaisTube : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     override fun searchAnimeSelector(): String {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     override fun searchAnimeFromElement(element: Element): SAnime {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     override fun searchAnimeNextPageSelector(): String? {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     // =========================== Anime Details ============================
@@ -154,7 +145,7 @@ class HentaisTube : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // ============================== Episodes ==============================
     override fun episodeListParse(response: Response) = super.episodeListParse(response).reversed()
 
-    override fun episodeListSelector() = "div.pagAniListaContainer > li > a"
+    override fun episodeListSelector() = "ul.pagAniListaContainer > li > a"
 
     override fun episodeFromElement(element: Element) = SEpisode.create().apply {
         setUrlWithoutDomain(element.attr("href"))
@@ -164,13 +155,12 @@ class HentaisTube : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     // ============================ Video Links =============================
     override fun videoListParse(response: Response): List<Video> {
-        return response.use { it.asJsoup() }.select(videoListSelector()).parallelMap {
-            runCatching {
-                client.newCall(GET(it.attr("src"), headers)).execute().use { res ->
-                    extractVideosFromIframe(res.use { it.asJsoup() })
+        return response.asJsoup().select(videoListSelector())
+            .parallelCatchingFlatMapBlocking {
+                client.newCall(GET(it.attr("src"), headers)).await().let { res ->
+                    extractVideosFromIframe(res.asJsoup())
                 }
-            }.getOrElse { emptyList() }
-        }.flatten()
+            }
     }
 
     private val bloggerExtractor by lazy { BloggerExtractor(client) }
@@ -190,7 +180,7 @@ class HentaisTube : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             }
             url.contains("/player.php") -> {
                 val ahref = iframe.selectFirst("a")!!.attr("href")
-                val internal = client.newCall(GET(ahref, headers)).execute().use { it.asJsoup() }
+                val internal = client.newCall(GET(ahref, headers)).execute().asJsoup()
                 val videoUrl = internal.selectFirst("video > source")!!.attr("src")
                 listOf(Video(videoUrl, "Alternativo", videoUrl, headers))
             }
@@ -201,11 +191,11 @@ class HentaisTube : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun videoListSelector() = "iframe.meu-player"
 
     override fun videoFromElement(element: Element): Video {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     override fun videoUrlParse(document: Document): String {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     // ============================== Settings ==============================
@@ -217,12 +207,6 @@ class HentaisTube : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             entryValues = PREF_QUALITY_ENTRIES
             setDefaultValue(PREF_QUALITY_DEFAULT)
             summary = "%s"
-            setOnPreferenceChangeListener { _, newValue ->
-                val selected = newValue as String
-                val index = findIndexOfValue(selected)
-                val entry = entryValues[index] as String
-                preferences.edit().putString(key, entry).commit()
-            }
         }.also(screen::addPreference)
     }
 
@@ -231,11 +215,6 @@ class HentaisTube : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         select("div.boxAnimeSobreLinha:has(b:contains($key)) > a")
             .eachText()
             .joinToString()
-
-    private inline fun <A, B> Iterable<A>.parallelMap(crossinline f: suspend (A) -> B): List<B> =
-        runBlocking {
-            map { async(Dispatchers.Default) { f(it) } }.awaitAll()
-        }
 
     override fun List<Video>.sort(): List<Video> {
         val quality = preferences.getString(PREF_QUALITY_KEY, PREF_QUALITY_DEFAULT)!!

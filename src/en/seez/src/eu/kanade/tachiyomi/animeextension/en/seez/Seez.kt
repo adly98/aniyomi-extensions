@@ -2,9 +2,9 @@ package eu.kanade.tachiyomi.animeextension.en.seez
 
 import android.app.Application
 import android.content.SharedPreferences
+import android.util.Base64
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
-import eu.kanade.tachiyomi.animeextension.en.seez.extractors.VidsrcExtractor
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilter
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
@@ -14,24 +14,26 @@ import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.lib.filemoonextractor.FilemoonExtractor
+import eu.kanade.tachiyomi.lib.vidsrcextractor.VidsrcExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.runBlocking
+import eu.kanade.tachiyomi.util.parallelCatchingFlatMapBlocking
+import eu.kanade.tachiyomi.util.parseAs
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
+import java.net.URLDecoder
 import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
+import javax.crypto.Cipher
+import javax.crypto.spec.SecretKeySpec
 
 class Seez : ConfigurableAnimeSource, AnimeHttpSource() {
 
@@ -45,21 +47,17 @@ class Seez : ConfigurableAnimeSource, AnimeHttpSource() {
 
     override val supportsLatest = false
 
-    override val client: OkHttpClient = network.cloudflareClient
-
     private val json: Json by injectLazy()
 
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
     }
 
-    private val vrfHelper by lazy { VrfHelper(client, headers) }
-
     private val apiKey by lazy {
         val jsUrl = client.newCall(GET(baseUrl, headers)).execute().asJsoup()
             .select("script[defer][src]")[1].attr("abs:src")
 
-        val jsBody = client.newCall(GET(jsUrl, headers)).execute().use { it.body.string() }
+        val jsBody = client.newCall(GET(jsUrl, headers)).execute().body.string()
         Regex("""f="(\w{20,})"""").find(jsBody)!!.groupValues[1]
     }
 
@@ -92,18 +90,18 @@ class Seez : ConfigurableAnimeSource, AnimeHttpSource() {
             SAnime.create().apply {
                 title = name
                 url = LinkData(ani.id, "movie").toJsonString()
-                thumbnail_url = ani.poster_path?.let { IMG_URL + it } ?: FALLBACK_IMG
+                thumbnail_url = ani.posterPath?.let { IMG_URL + it } ?: FALLBACK_IMG
             }
         }
 
-        return AnimesPage(animeList, data.page < data.total_pages)
+        return AnimesPage(animeList, data.page < data.totalPages)
     }
 
     // =============================== Latest ===============================
 
-    override fun latestUpdatesRequest(page: Int): Request = throw Exception("Not used")
+    override fun latestUpdatesRequest(page: Int): Request = throw UnsupportedOperationException()
 
-    override fun latestUpdatesParse(response: Response): AnimesPage = throw Exception("Not used")
+    override fun latestUpdatesParse(response: Response): AnimesPage = throw UnsupportedOperationException()
 
     // =============================== Search ===============================
 
@@ -143,12 +141,13 @@ class Seez : ConfigurableAnimeSource, AnimeHttpSource() {
 
             SAnime.create().apply {
                 title = name
-                url = LinkData(ani.id, ani.media_type).toJsonString()
-                thumbnail_url = ani.poster_path?.let { IMG_URL + it } ?: FALLBACK_IMG
+                url = LinkData(ani.id, ani.mediaType).toJsonString()
+                thumbnail_url = ani.posterPath?.let { IMG_URL + it } ?: FALLBACK_IMG
+                status = if (ani.mediaType == "movie") SAnime.COMPLETED else SAnime.UNKNOWN
             }
         }
 
-        return AnimesPage(animeList, data.page < data.total_pages)
+        return AnimesPage(animeList, data.page < data.totalPages)
     }
 
     // ============================== Filters ===============================
@@ -200,9 +199,8 @@ class Seez : ConfigurableAnimeSource, AnimeHttpSource() {
         val data = json.decodeFromString<LinkData>(anime.url)
 
         val url = TMDB_URL.newBuilder().apply {
-            addPathSegment(data.media_type)
+            addPathSegment(data.mediaType)
             addPathSegment(data.id.toString())
-            addQueryParameter("append_to_response", "videos,credits,recommendations")
         }.buildAPIUrl()
 
         return GET(url, headers = apiHeaders)
@@ -212,15 +210,34 @@ class Seez : ConfigurableAnimeSource, AnimeHttpSource() {
         val data = response.parseAs<TmdbDetailsResponse>()
 
         return SAnime.create().apply {
-            genre = data.genres?.joinToString(", ") { it.name }
-            description = buildString {
-                if (data.overview != null) {
-                    append(data.overview)
-                    append("\n\n")
+            author = data.productions?.joinToString { it.name }
+            genre = data.genres?.joinToString { it.name }
+            status = when (data.status) {
+                "Ended", "Released" -> SAnime.COMPLETED
+                "In Production" -> SAnime.LICENSED
+                "Canceled" -> SAnime.CANCELLED
+                "Returning Series" -> {
+                    data.nextEpisode?.let { SAnime.ONGOING } ?: SAnime.ON_HIATUS
                 }
-                if (data.release_date != null) append("Release date: ${data.release_date}")
-                if (data.first_air_date != null) append("\nFirst air date: ${data.first_air_date}")
-                if (data.last_air_date != null) append("\nLast air date: ${data.last_air_date}")
+                else -> SAnime.UNKNOWN
+            }
+            description = buildString {
+                data.overview?.let {
+                    appendLine(it)
+                    appendLine()
+                }
+                data.nextEpisode?.let {
+                    appendLine("Next: Ep ${it.epNumber} - ${it.name}")
+                    appendLine("Air Date: ${it.airDate}")
+                    appendLine()
+                }
+                data.releaseDate?.let { appendLine("Release date: $it") }
+                data.firstAirDate?.let { appendLine("First air date: $it") }
+                data.lastAirDate?.let { appendLine("Last air date: $it") }
+                data.languages?.let { langs ->
+                    append("Languages: ")
+                    appendLine(langs.joinToString { "${it.engName} (${it.name})" })
+                }
             }
         }
     }
@@ -237,31 +254,35 @@ class Seez : ConfigurableAnimeSource, AnimeHttpSource() {
             episodeList.add(
                 SEpisode.create().apply {
                     name = "Movie"
-                    date_upload = parseDate(data.release_date!!)
+                    date_upload = parseDate(data.releaseDate!!)
                     episode_number = 1F
                     url = "/movie/${data.id}"
                 },
             )
         } else {
-            data.seasons.filter { t -> t.season_number != 0 }.forEach { season ->
+            data.seasons.filter { t -> t.seasonNumber != 0 }.forEach { season ->
                 val seasonUrl = TMDB_URL.newBuilder().apply {
                     addPathSegment("tv")
                     addPathSegment(data.id.toString())
                     addPathSegment("season")
-                    addPathSegment(season.season_number.toString())
+                    addPathSegment(season.seasonNumber.toString())
                 }.buildAPIUrl()
 
                 val seasonData = client.newCall(
                     GET(seasonUrl, headers = apiHeaders),
                 ).execute().parseAs<TmdbSeasonResponse>()
 
-                seasonData.episodes.forEach { ep ->
+                seasonData.episodes.filter { ep ->
+                    ep.airDate?.let {
+                        DATE_FORMATTER.parse(it)!! <= DATE_FORMATTER.parse(DATE_FORMATTER.format(Date()))
+                    } ?: false
+                }.forEach { ep ->
                     episodeList.add(
                         SEpisode.create().apply {
-                            name = "Season ${season.season_number} Ep. ${ep.episode_number} - ${ep.name}"
-                            date_upload = ep.air_date?.let(::parseDate) ?: 0L
-                            episode_number = ep.episode_number.toFloat()
-                            url = "/tv/${data.id}/${season.season_number}/${ep.episode_number}"
+                            name = "Season ${season.seasonNumber} Ep. ${ep.epNumber} - ${ep.name}"
+                            date_upload = ep.airDate?.let(::parseDate) ?: 0L
+                            episode_number = ep.epNumber.toFloat()
+                            url = "/tv/${data.id}/${season.seasonNumber}/${ep.epNumber}"
                         },
                     )
                 }
@@ -287,7 +308,7 @@ class Seez : ConfigurableAnimeSource, AnimeHttpSource() {
     }
 
     override fun videoListParse(response: Response): List<Video> {
-        val document = response.use { it.asJsoup() }
+        val document = response.asJsoup()
 
         val sourcesHeaders = headers.newBuilder().apply {
             add("Accept", "application/json, text/javascript, */*; q=0.01")
@@ -306,21 +327,18 @@ class Seez : ConfigurableAnimeSource, AnimeHttpSource() {
                 GET("$embedUrl/ajax/embed/source/${it.id}", headers = sourcesHeaders),
             ).execute().parseAs<EmbedUrlResponse>().result.url
 
-            Pair(vrfHelper.decrypt(encrypted), it.title)
+            Pair(decrypt(encrypted), it.title)
         }
 
-        return urlList.parallelMap {
+        return urlList.parallelCatchingFlatMapBlocking {
             val url = it.first
-            val name = it.second
 
-            runCatching {
-                when (name) {
-                    "Vidplay" -> vidsrcExtractor.videosFromUrl(url, name)
-                    "Filemoon" -> filemoonExtractor.videosFromUrl(url)
-                    else -> emptyList()
-                }
-            }.getOrElse { emptyList() }
-        }.flatten().ifEmpty { throw Exception("Failed to fetch videos") }
+            when (val name = it.second) {
+                "Vidplay" -> vidsrcExtractor.videosFromUrl(url, name)
+                "Filemoon" -> filemoonExtractor.videosFromUrl(url)
+                else -> emptyList()
+            }
+        }
     }
 
     // ============================= Utilities ==============================
@@ -351,21 +369,22 @@ class Seez : ConfigurableAnimeSource, AnimeHttpSource() {
             .getOrNull() ?: 0L
     }
 
-    private inline fun <reified T> Response.parseAs(): T {
-        val responseBody = use { it.body.string() }
-        return json.decodeFromString(responseBody)
-    }
+    private fun decrypt(encrypted: String): String {
+        var vrf = encrypted.toByteArray()
+        vrf = Base64.decode(vrf, Base64.URL_SAFE)
 
-    // From Dopebox
-    private fun <A, B> Iterable<A>.parallelMap(f: suspend (A) -> B): List<B> =
-        runBlocking {
-            map { async(Dispatchers.Default) { f(it) } }.awaitAll()
-        }
+        val rc4Key = SecretKeySpec("8z5Ag5wgagfsOuhz".toByteArray(), "RC4")
+        val cipher = Cipher.getInstance("RC4")
+        cipher.init(Cipher.DECRYPT_MODE, rc4Key, cipher.parameters)
+        vrf = cipher.doFinal(vrf)
+
+        return URLDecoder.decode(vrf.toString(Charsets.UTF_8), "utf-8")
+    }
 
     companion object {
         private val TMDB_URL = "https://api.themoviedb.org/3".toHttpUrl()
-        private val IMG_URL = "https://image.tmdb.org/t/p/w300/"
-        private val FALLBACK_IMG = "https://seez.su/fallback.png"
+        private const val IMG_URL = "https://image.tmdb.org/t/p/w300/"
+        private const val FALLBACK_IMG = "https://seez.su/fallback.png"
 
         private val DATE_FORMATTER by lazy {
             SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH)

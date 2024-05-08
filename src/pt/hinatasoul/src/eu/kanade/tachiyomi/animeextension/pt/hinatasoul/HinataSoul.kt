@@ -12,12 +12,11 @@ import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
-import eu.kanade.tachiyomi.network.asObservableSuccess
+import eu.kanade.tachiyomi.network.awaitSuccess
 import eu.kanade.tachiyomi.util.asJsoup
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import rx.Observable
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.text.SimpleDateFormat
@@ -32,8 +31,6 @@ class HinataSoul : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override val lang = "pt-BR"
 
     override val supportsLatest = true
-
-    override val client = network.cloudflareClient
 
     private val preferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
@@ -69,14 +66,14 @@ class HinataSoul : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun latestUpdatesNextPageSelector() = null
 
     // =============================== Search ===============================
-    override fun fetchSearchAnime(page: Int, query: String, filters: AnimeFilterList): Observable<AnimesPage> {
+    override suspend fun getSearchAnime(page: Int, query: String, filters: AnimeFilterList): AnimesPage {
         return if (query.startsWith(PREFIX_SEARCH)) {
             val slug = query.removePrefix(PREFIX_SEARCH)
             client.newCall(GET("$baseUrl/animes/$slug"))
-                .asObservableSuccess()
-                .map(::searchAnimeBySlugParse)
+                .awaitSuccess()
+                .use(::searchAnimeBySlugParse)
         } else {
-            super.fetchSearchAnime(page, query, filters)
+            super.getSearchAnime(page, query, filters)
         }
     }
 
@@ -99,7 +96,7 @@ class HinataSoul : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     override fun searchAnimeParse(response: Response): AnimesPage {
-        val document = response.use { it.asJsoup() }
+        val document = response.asJsoup()
         val animes = document.select(searchAnimeSelector()).map(::searchAnimeFromElement)
         val hasNext = hasNextPage(document)
         return AnimesPage(animes, hasNext)
@@ -134,12 +131,12 @@ class HinataSoul : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // ============================== Episodes ==============================
     override fun episodeListSelector() = "div.aniContainer a"
     override fun episodeListParse(response: Response): List<SEpisode> {
-        var doc = getRealDoc(response.use { it.asJsoup() })
+        var doc = getRealDoc(response.asJsoup())
         val totalEpisodes = buildList {
             do {
                 if (isNotEmpty()) {
                     val url = doc.selectFirst("div.mwidth > a:containsOwn(»)")!!.absUrl("href")
-                    doc = client.newCall(GET(url, headers)).execute().use { it.asJsoup() }
+                    doc = client.newCall(GET(url, headers)).execute().asJsoup()
                 }
                 doc.select(episodeListSelector())
                     .map(::episodeFromElement)
@@ -165,9 +162,9 @@ class HinataSoul : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun videoListParse(response: Response) = extractor.getVideoList(response)
 
-    override fun videoListSelector() = throw Exception("not used")
-    override fun videoFromElement(element: Element) = throw Exception("not used")
-    override fun videoUrlParse(document: Document) = throw Exception("not used")
+    override fun videoListSelector() = throw UnsupportedOperationException()
+    override fun videoFromElement(element: Element) = throw UnsupportedOperationException()
+    override fun videoUrlParse(document: Document) = throw UnsupportedOperationException()
 
     // ============================== Settings ==============================
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
@@ -211,7 +208,7 @@ class HinataSoul : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
         return document.selectFirst(animeMenuSelector)?.let {
             client.newCall(GET(it.attr("href"), headers)).execute()
-                .use { r -> r.asJsoup() }
+                .asJsoup()
         } ?: document
     }
 

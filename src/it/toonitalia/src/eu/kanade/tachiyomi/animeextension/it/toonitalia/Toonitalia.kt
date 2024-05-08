@@ -24,7 +24,6 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.lang.Exception
 
 class Toonitalia : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
@@ -35,8 +34,6 @@ class Toonitalia : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override val lang = "it"
 
     override val supportsLatest = false
-
-    override val client = network.cloudflareClient
 
     private val preferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
@@ -58,17 +55,17 @@ class Toonitalia : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun popularAnimeNextPageSelector() = "nav.pagination a.next"
 
     // =============================== Latest ===============================
-    override fun latestUpdatesRequest(page: Int): Request = throw Exception("Not used")
+    override fun latestUpdatesRequest(page: Int): Request = throw UnsupportedOperationException()
 
-    override fun latestUpdatesSelector(): String = throw Exception("Not used")
+    override fun latestUpdatesSelector(): String = throw UnsupportedOperationException()
 
-    override fun latestUpdatesFromElement(element: Element): SAnime = throw Exception("Not used")
+    override fun latestUpdatesFromElement(element: Element): SAnime = throw UnsupportedOperationException()
 
-    override fun latestUpdatesNextPageSelector(): String = throw Exception("Not used")
+    override fun latestUpdatesNextPageSelector(): String = throw UnsupportedOperationException()
 
     // =============================== Search ===============================
     override fun searchAnimeParse(response: Response): AnimesPage {
-        val document = response.use { it.asJsoup() }
+        val document = response.asJsoup()
 
         val isNormalSearch = document.location().contains("/?s=")
         val animes = if (isNormalSearch) {
@@ -138,7 +135,7 @@ class Toonitalia : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     private val episodeNumRegex by lazy { Regex("\\s(\\d+x\\d+)\\s?") }
 
     override fun episodeListParse(response: Response): List<SEpisode> {
-        val doc = response.use { it.asJsoup() }
+        val doc = response.asJsoup()
         val url = doc.location()
 
         if ("/film-anime/" in url) {
@@ -166,13 +163,13 @@ class Toonitalia : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }.reversed()
     }
 
-    override fun episodeFromElement(element: Element) = throw Exception("Not used")
+    override fun episodeFromElement(element: Element) = throw UnsupportedOperationException()
 
     override fun episodeListSelector() = "article > div.entry-content table tr:has(a)"
 
     // ============================ Video Links =============================
     override fun videoListParse(response: Response): List<Video> {
-        val document = response.use { it.asJsoup() }
+        val document = response.asJsoup()
         val episodeNumber = response.request.url.fragment!!.toInt()
 
         val episode = document.select(episodeListSelector())
@@ -198,7 +195,7 @@ class Toonitalia : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     private fun extractVideos(url: String): List<Video> =
         when {
-            "https://voe.sx" in url -> voeExtractor.videoFromUrl(url)?.let(::listOf)
+            "https://voe.sx" in url -> voeExtractor.videosFromUrl(url)
             "https://streamtape" in url -> streamTapeExtractor.videoFromUrl(url)?.let(::listOf)
             "https://maxstream" in url -> maxStreamExtractor.videosFromUrl(url)
             "https://streamz" in url || "streamz.cc" in url -> {
@@ -207,11 +204,11 @@ class Toonitalia : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             else -> null
         } ?: emptyList()
 
-    override fun videoFromElement(element: Element): Video = throw Exception("Not used")
+    override fun videoFromElement(element: Element): Video = throw UnsupportedOperationException()
 
-    override fun videoListSelector(): String = throw Exception("Not used")
+    override fun videoListSelector(): String = throw UnsupportedOperationException()
 
-    override fun videoUrlParse(document: Document): String = throw Exception("Not used")
+    override fun videoUrlParse(document: Document): String = throw UnsupportedOperationException()
 
     // ============================== Filters ===============================
     override fun getFilterList() = AnimeFilterList(
@@ -282,7 +279,7 @@ class Toonitalia : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // ============================= Utilities ==============================
     private fun bypassUprot(url: String): String? =
         client.newCall(GET(url, headers)).execute()
-            .use { it.asJsoup() }
+            .asJsoup()
             .selectFirst("a:has(button.button.is-info)")
             ?.attr("href")
 

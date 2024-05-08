@@ -15,10 +15,10 @@ class MixDropExtractor(private val client: OkHttpClient) {
         lang: String = "",
         prefix: String = "",
         externalSubs: List<Track> = emptyList(),
-        referer: String = DEFAULT_REFERER
+        referer: String = DEFAULT_REFERER,
     ): List<Video> {
         val headers = Headers.headersOf("Referer", referer)
-        val doc = client.newCall(GET(url, headers)).execute().use { it.asJsoup() }
+        val doc = client.newCall(GET(url, headers)).execute().asJsoup()
         val unpacked = doc.selectFirst("script:containsData(eval):containsData(MDCore)")
             ?.data()
             ?.let(Unpacker::unpack)

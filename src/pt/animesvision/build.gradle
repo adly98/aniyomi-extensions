@@ -1,21 +1,7 @@
-plugins {
-    alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.serialization)
-}
-
 ext {
     extName = 'AnimesVision'
-    pkgNameSuffix = 'pt.animesvision'
     extClass = '.AnimesVision'
-    extVersionCode = 21
-    libVersion = '13'
-}
-
-dependencies {
-    implementation(project(':lib-voe-extractor'))
-    implementation(project(':lib-streamtape-extractor'))
-    implementation(project(':lib-dood-extractor'))
+    extVersionCode = 25
 }
 
 apply from: "$rootDir/common.gradle"

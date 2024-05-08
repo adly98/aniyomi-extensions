@@ -16,19 +16,18 @@ import eu.kanade.tachiyomi.lib.googledriveextractor.GoogleDriveExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.util.asJsoup
+import eu.kanade.tachiyomi.util.parseAs
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.FormBody
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import rx.Observable
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
@@ -54,8 +53,6 @@ class Kayoanime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val supportsLatest = true
 
-    override val client: OkHttpClient = network.cloudflareClient
-
     private val json: Json by injectLazy()
 
     private val preferences: SharedPreferences by lazy {
@@ -71,8 +68,8 @@ class Kayoanime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             latestPost = ""
             layout = ""
             settings = ""
-            currentReferer = "https://kayoanime.com/ongoing-anime/"
-            GET("$baseUrl/ongoing-anime/")
+            currentReferer = "https://kayoanime.com/ongoing-animes/"
+            GET("$baseUrl/ongoing-animes/")
         } else {
             val formBody = FormBody.Builder()
                 .add("action", "tie_archives_load_more")
@@ -209,11 +206,17 @@ class Kayoanime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }
     }
 
-    override fun searchAnimeSelector(): String = popularAnimeSelector()
+    override fun searchAnimeParse(response: Response): AnimesPage =
+        popularAnimeParse(response)
 
-    override fun searchAnimeFromElement(element: Element): SAnime = popularAnimeFromElement(element)
+    override fun searchAnimeSelector(): String =
+        throw UnsupportedOperationException()
 
-    override fun searchAnimeNextPageSelector(): String = popularAnimeNextPageSelector()
+    override fun searchAnimeFromElement(element: Element): SAnime =
+        throw UnsupportedOperationException()
+
+    override fun searchAnimeNextPageSelector(): String =
+        throw UnsupportedOperationException()
 
     // ============================== Filters ===============================
 
@@ -396,7 +399,8 @@ class Kayoanime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 val url = it.selectFirst("a[href*=tinyurl.com]")!!.attr("href")
                 val redirected = noRedirectClient.newCall(GET(url)).execute()
                 redirected.headers["location"]?.let { location ->
-                    if (location.toHttpUrl().host.contains("workers.dev")) {
+                    val host = location.toHttpUrl().host
+                    if (host.contains("workers.dev")) {
                         episodeList.addAll(
                             indexExtractor.getEpisodesFromIndex(
                                 location,
@@ -404,6 +408,14 @@ class Kayoanime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                                 preferences.trimEpisodeName,
                             ),
                         )
+                    }
+
+                    if (host.contains("slogoanime")) {
+                        val document = client.newCall(GET(location)).execute().asJsoup()
+                        document.select("a[href*=drive.google.com]").distinctBy { it.text() }.forEach {
+                            val url = it.selectFirst("a[href*=drive.google.com]")!!.attr("href").substringBeforeLast("?usp=shar")
+                            traverseFolder(url, getVideoPathsFromElement(season) + " " + it.text())
+                        }
                     }
                 }
             }
@@ -418,39 +430,32 @@ class Kayoanime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             .replace("Download The Anime From Drive", "", true)
     }
 
-    override fun episodeListSelector(): String = throw Exception("Not used")
+    override fun episodeListSelector(): String = throw UnsupportedOperationException()
 
-    override fun episodeFromElement(element: Element): SEpisode = throw Exception("Not used")
+    override fun episodeFromElement(element: Element): SEpisode = throw UnsupportedOperationException()
 
     // ============================ Video Links =============================
 
-    override fun fetchVideoList(episode: SEpisode): Observable<List<Video>> {
-        val host = episode.url.toHttpUrl().host
-        val videoList = if (host == "drive.google.com") {
-            GoogleDriveExtractor(client, headers).videosFromUrl(episode.url)
+    override suspend fun getVideoList(episode: SEpisode): List<Video> {
+        val httpUrl = episode.url.toHttpUrl()
+        val host = httpUrl.host
+        return if (host == "drive.google.com") {
+            val id = httpUrl.queryParameter("id")!!
+            GoogleDriveExtractor(client, headers).videosFromUrl(id)
         } else if (host.contains("workers.dev")) {
             getIndexVideoUrl(episode.url)
         } else {
             throw Exception("Unsupported url: ${episode.url}")
         }
-
-        require(videoList.isNotEmpty()) { "Failed to fetch videos" }
-
-        return Observable.just(videoList)
     }
 
-    override fun videoListSelector(): String = throw Exception("Not Used")
+    override fun videoListSelector(): String = throw UnsupportedOperationException()
 
-    override fun videoFromElement(element: Element): Video = throw Exception("Not Used")
+    override fun videoFromElement(element: Element): Video = throw UnsupportedOperationException()
 
-    override fun videoUrlParse(document: Document): String = throw Exception("Not Used")
+    override fun videoUrlParse(document: Document): String = throw UnsupportedOperationException()
 
     // ============================= Utilities ==============================
-
-    private inline fun <reified T> Response.parseAs(transform: (String) -> String = { it }): T {
-        val responseBody = use { transform(it.body.string()) }
-        return json.decodeFromString(responseBody)
-    }
 
     // https://github.com/yt-dlp/yt-dlp/blob/8f0be90ecb3b8d862397177bb226f17b245ef933/yt_dlp/extractor/youtube.py#L573
     private fun generateSapisidhashHeader(SAPISID: String, origin: String = "https://drive.google.com"): String {

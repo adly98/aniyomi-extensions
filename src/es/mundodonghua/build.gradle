@@ -1,19 +1,14 @@
-apply plugin: 'com.android.application'
-apply plugin: 'kotlin-android'
-
 ext {
     extName = 'MundoDonghua'
-    pkgNameSuffix = 'es.mundodonghua'
     extClass = '.MundoDonghua'
-    extVersionCode = 15
-    libVersion = '13'
-}
-
-dependencies {
-    implementation(project(':lib-filemoon-extractor'))
-    implementation(project(':lib-voe-extractor'))
-    implementation(project(':lib-playlist-utils'))
-    implementation(project(':lib-dailymotion-extractor'))
+    extVersionCode = 22
 }
 
 apply from: "$rootDir/common.gradle"
+
+dependencies {
+    implementation(project(':lib:filemoon-extractor'))
+    implementation(project(':lib:voe-extractor'))
+    implementation(project(':lib:playlist-utils'))
+    implementation(project(':lib:dailymotion-extractor'))
+}

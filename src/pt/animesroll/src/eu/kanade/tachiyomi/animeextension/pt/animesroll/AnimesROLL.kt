@@ -14,13 +14,13 @@ import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
-import eu.kanade.tachiyomi.network.asObservableSuccess
+import eu.kanade.tachiyomi.network.awaitSuccess
 import eu.kanade.tachiyomi.util.asJsoup
+import eu.kanade.tachiyomi.util.parseAs
 import kotlinx.serialization.json.Json
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
-import rx.Observable
 
 class AnimesROLL : AnimeHttpSource() {
 
@@ -48,7 +48,7 @@ class AnimesROLL : AnimeHttpSource() {
     override fun latestUpdatesRequest(page: Int) = GET("$baseUrl/lancamentos")
 
     override fun latestUpdatesParse(response: Response): AnimesPage {
-        val parsed = response.use { it.asJsoup() }.parseAs<LatestAnimeDto>()
+        val parsed = response.asJsoup().parseAs<LatestAnimeDto>()
         val animes = parsed.episodes.map { it.episode.anime!!.toSAnime() }
         return AnimesPage(animes, false)
     }
@@ -59,14 +59,14 @@ class AnimesROLL : AnimeHttpSource() {
         return AnimesPage(listOf(details), false)
     }
 
-    override fun fetchSearchAnime(page: Int, query: String, filters: AnimeFilterList): Observable<AnimesPage> {
+    override suspend fun getSearchAnime(page: Int, query: String, filters: AnimeFilterList): AnimesPage {
         return if (query.startsWith(PREFIX_SEARCH)) {
             val path = query.removePrefix(PREFIX_SEARCH)
             client.newCall(GET("$baseUrl/$path"))
-                .asObservableSuccess()
-                .map(::searchAnimeByPathParse)
+                .awaitSuccess()
+                .use(::searchAnimeByPathParse)
         } else {
-            super.fetchSearchAnime(page, query, filters)
+            super.getSearchAnime(page, query, filters)
         }
     }
     override fun searchAnimeParse(response: Response): AnimesPage {
@@ -81,7 +81,7 @@ class AnimesROLL : AnimeHttpSource() {
 
     // =========================== Anime Details ============================
     override fun animeDetailsParse(response: Response): SAnime {
-        val doc = response.use { it.asJsoup() }
+        val doc = response.asJsoup()
         val anime = when {
             doc.location().contains("/f/") -> doc.parseAs<MovieInfoDto>().movieData
             else -> doc.parseAs<AnimeDataDto>()
@@ -102,7 +102,7 @@ class AnimesROLL : AnimeHttpSource() {
 
     // ============================== Episodes ==============================
     override fun episodeListParse(response: Response): List<SEpisode> {
-        val doc = response.use { it.asJsoup() }
+        val doc = response.asJsoup()
         val originalUrl = doc.location()
         return if ("/f/" in originalUrl) {
             val od = doc.parseAs<MovieInfoDto>().movieData.od
@@ -144,9 +144,9 @@ class AnimesROLL : AnimeHttpSource() {
         GET("$NEW_API_URL/animes/$animeId/episodes?page=$page%order=desc")
 
     // ============================ Video Links =============================
-    override fun fetchVideoList(episode: SEpisode): Observable<List<Video>> {
+    override suspend fun getVideoList(episode: SEpisode): List<Video> {
         val epUrl = episode.url
-        return Observable.just(listOf(Video(epUrl, "default", epUrl)))
+        return listOf(Video(epUrl, "default", epUrl))
     }
 
     override fun videoListRequest(episode: SEpisode): Request {
@@ -164,10 +164,6 @@ class AnimesROLL : AnimeHttpSource() {
             .substringAfter(":")
             .substringBeforeLast(",\"page\"")
         return json.decodeFromString<PagePropDto<T>>(nextData).data
-    }
-
-    private inline fun <reified T> Response.parseAs(): T {
-        return use { it.body.string() }.let(json::decodeFromString)
     }
 
     private fun String.ifNotEmpty(block: (String) -> String): String {

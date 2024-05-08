@@ -13,7 +13,7 @@ import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
-import eu.kanade.tachiyomi.network.asObservableSuccess
+import eu.kanade.tachiyomi.network.awaitSuccess
 import eu.kanade.tachiyomi.util.asJsoup
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -23,7 +23,6 @@ import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import rx.Observable
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -104,19 +103,19 @@ class HentaiZM : ParsedAnimeHttpSource(), ConfigurableAnimeSource {
     override fun latestUpdatesNextPageSelector() = "a[rel=next]:contains(Sonraki Sayfa)"
 
     // =============================== Search ===============================
-    override fun fetchSearchAnime(page: Int, query: String, filters: AnimeFilterList): Observable<AnimesPage> {
+    override suspend fun getSearchAnime(page: Int, query: String, filters: AnimeFilterList): AnimesPage {
         return if (query.startsWith(PREFIX_SEARCH)) { // URL intent handler
             val id = query.removePrefix(PREFIX_SEARCH)
             client.newCall(GET("$baseUrl/hentai-detay/$id"))
-                .asObservableSuccess()
-                .map(::searchAnimeByIdParse)
+                .awaitSuccess()
+                .use(::searchAnimeByIdParse)
         } else {
-            super.fetchSearchAnime(page, query, filters)
+            super.getSearchAnime(page, query, filters)
         }
     }
 
     private fun searchAnimeByIdParse(response: Response): AnimesPage {
-        val details = animeDetailsParse(response.use { it.asJsoup() })
+        val details = animeDetailsParse(response.asJsoup())
         return AnimesPage(listOf(details), false)
     }
 
@@ -126,9 +125,9 @@ class HentaiZM : ParsedAnimeHttpSource(), ConfigurableAnimeSource {
 
     override fun searchAnimeParse(response: Response) = popularAnimeParse(response)
 
-    override fun searchAnimeSelector() = throw UnsupportedOperationException("Not used.")
+    override fun searchAnimeSelector() = throw UnsupportedOperationException()
 
-    override fun searchAnimeFromElement(element: Element) = throw UnsupportedOperationException("Not used.")
+    override fun searchAnimeFromElement(element: Element) = throw UnsupportedOperationException()
 
     override fun searchAnimeNextPageSelector() = null
 
@@ -163,11 +162,11 @@ class HentaiZM : ParsedAnimeHttpSource(), ConfigurableAnimeSource {
     private val videaExtractor by lazy { VideaExtractor(client) }
 
     override fun videoListParse(response: Response): List<Video> {
-        val doc = response.use { it.asJsoup() }
+        val doc = response.asJsoup()
         val videaItem = doc.selectFirst("div.alternatif a:contains(Videa)")!!
         val path = videaItem.attr("onclick").substringAfter("../../").substringBefore("'")
         val req = client.newCall(GET("$baseUrl/$path", headers)).execute()
-            .use { it.asJsoup() }
+            .asJsoup()
         val videaUrl = req.selectFirst("iframe")!!.attr("abs:src")
         return videaExtractor.videosFromUrl(videaUrl)
     }
@@ -186,15 +185,15 @@ class HentaiZM : ParsedAnimeHttpSource(), ConfigurableAnimeSource {
     }
 
     override fun videoListSelector(): String {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     override fun videoFromElement(element: Element): Video {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     override fun videoUrlParse(document: Document): String {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     // ============================== Settings ==============================

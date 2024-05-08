@@ -1,15 +1,11 @@
-plugins {
-    alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.serialization)
-}
-
 ext {
     extName = 'AnimesTC'
-    pkgNameSuffix = 'pt.animestc'
     extClass = '.AnimesTC'
-    extVersionCode = 3
-    libVersion = '13'
+    extVersionCode = 6
 }
 
 apply from: "$rootDir/common.gradle"
+
+dependencies {
+    implementation(project(":lib:googledrive-extractor"))
+}

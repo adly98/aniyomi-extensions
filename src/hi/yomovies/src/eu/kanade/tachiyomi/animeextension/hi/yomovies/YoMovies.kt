@@ -1,11 +1,8 @@
 package eu.kanade.tachiyomi.animeextension.hi.yomovies
 
 import android.app.Application
-import android.widget.Toast
-import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
-import eu.kanade.tachiyomi.animeextension.BuildConfig
 import eu.kanade.tachiyomi.animeextension.hi.yomovies.extractors.MinoplresExtractor
 import eu.kanade.tachiyomi.animeextension.hi.yomovies.extractors.MovembedExtractor
 import eu.kanade.tachiyomi.animeextension.hi.yomovies.extractors.SpeedostreamExtractor
@@ -18,12 +15,8 @@ import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.runBlocking
+import eu.kanade.tachiyomi.util.parallelCatchingFlatMapBlocking
 import okhttp3.HttpUrl.Companion.toHttpUrl
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
@@ -36,13 +29,13 @@ class YoMovies : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val name = "YoMovies"
 
-    override val baseUrl by lazy { preferences.getString(PREF_DOMAIN_KEY, PREF_DOMAIN_DEFAULT)!! }
+    // TODO: Check frequency of url changes to potentially
+    // add back overridable baseurl preference
+    override val baseUrl = "https://yomovies.town"
 
     override val lang = "hi"
 
     override val supportsLatest = false
-
-    override val client: OkHttpClient = network.cloudflareClient
 
     private val preferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
@@ -64,13 +57,13 @@ class YoMovies : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     // =============================== Latest ===============================
 
-    override fun latestUpdatesRequest(page: Int): Request = throw Exception("Not used")
+    override fun latestUpdatesRequest(page: Int): Request = throw UnsupportedOperationException()
 
-    override fun latestUpdatesSelector(): String = throw Exception("Not used")
+    override fun latestUpdatesSelector(): String = throw UnsupportedOperationException()
 
-    override fun latestUpdatesFromElement(element: Element): SAnime = throw Exception("Not used")
+    override fun latestUpdatesFromElement(element: Element): SAnime = throw UnsupportedOperationException()
 
-    override fun latestUpdatesNextPageSelector(): String = throw Exception("Not used")
+    override fun latestUpdatesNextPageSelector(): String = throw UnsupportedOperationException()
 
     // =============================== Search ===============================
 
@@ -108,7 +101,7 @@ class YoMovies : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // ============================== Episodes ==============================
 
     override fun episodeListParse(response: Response): List<SEpisode> {
-        val document = response.use { it.asJsoup() }
+        val document = response.asJsoup()
         val episodeList = mutableListOf<SEpisode>()
 
         val seasonList = document.select("div#seasons > div.tvseason")
@@ -144,23 +137,23 @@ class YoMovies : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun episodeListSelector() = "div.les-content > a"
 
-    override fun episodeFromElement(element: Element): SEpisode = throw Exception("Not used")
+    override fun episodeFromElement(element: Element): SEpisode = throw UnsupportedOperationException()
 
     // ============================ Video Links =============================
 
     override fun videoListParse(response: Response): List<Video> {
-        val document = response.use { it.asJsoup() }
+        val document = response.asJsoup()
 
-        val videoList = document.select("div[id*=tab]:has(div.movieplay > iframe)").parallelMap { server ->
-            val iframe = server.selectFirst("div.movieplay > iframe")!!
-            val name = document.selectFirst("ul.idTabs > li:has(a[href=#${server.id()}]) div.les-title")?.text()?.let { "[$it] - " } ?: ""
+        val videoList = document.select("div[id*=tab]:has(div.movieplay > iframe)")
+            .parallelCatchingFlatMapBlocking { server ->
+                val iframe = server.selectFirst("div.movieplay > iframe")!!
+                val name = document.selectFirst("ul.idTabs > li:has(a[href=#${server.id()}]) div.les-title")
+                    ?.text()
+                    ?.let { "[$it] - " }
+                    .orEmpty()
 
-            runCatching {
                 extractVideosFromIframe(iframe.attr("abs:src"), name)
-            }.getOrElse { emptyList() }
-        }.flatten()
-
-        require(videoList.isNotEmpty()) { "Failed to fetch videos" }
+            }
 
         return videoList.sort()
     }
@@ -184,11 +177,11 @@ class YoMovies : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }
     }
 
-    override fun videoListSelector() = throw Exception("not used")
+    override fun videoListSelector() = throw UnsupportedOperationException()
 
-    override fun videoFromElement(element: Element) = throw Exception("not used")
+    override fun videoFromElement(element: Element) = throw UnsupportedOperationException()
 
-    override fun videoUrlParse(document: Document) = throw Exception("not used")
+    override fun videoUrlParse(document: Document) = throw UnsupportedOperationException()
 
     // ============================= Utilities ==============================
 
@@ -214,18 +207,7 @@ class YoMovies : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         ).reversed()
     }
 
-    // From Dopebox
-    private inline fun <A, B> Iterable<A>.parallelMap(crossinline f: suspend (A) -> B): List<B> =
-        runBlocking {
-            map { async(Dispatchers.Default) { f(it) } }.awaitAll()
-        }
-
     companion object {
-        private val PREF_DOMAIN_KEY = "preferred_domain_name_v${BuildConfig.VERSION_CODE}"
-        private const val PREF_DOMAIN_TITLE = "Override BaseUrl"
-        private const val PREF_DOMAIN_DEFAULT = "https://yomovies.support"
-        private const val PREF_DOMAIN_SUMMARY = "For temporary uses. Updating the extension will erase this setting."
-
         private const val PREF_QUALITY_KEY = "preferred_quality"
         private const val PREF_QUALITY_DEFAULT = "1080"
     }
@@ -233,21 +215,6 @@ class YoMovies : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // ============================== Settings ==============================
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
-        EditTextPreference(screen.context).apply {
-            key = PREF_DOMAIN_KEY
-            title = PREF_DOMAIN_TITLE
-            summary = PREF_DOMAIN_SUMMARY
-            dialogTitle = PREF_DOMAIN_TITLE
-            dialogMessage = "Default: $PREF_DOMAIN_DEFAULT"
-            setDefaultValue(PREF_DOMAIN_DEFAULT)
-
-            setOnPreferenceChangeListener { _, newValue ->
-                val newValueString = newValue as String
-                Toast.makeText(screen.context, "Restart Aniyomi to apply new setting.", Toast.LENGTH_LONG).show()
-                preferences.edit().putString(key, newValueString.trim()).commit()
-            }
-        }.also(screen::addPreference)
-
         ListPreference(screen.context).apply {
             key = PREF_QUALITY_KEY
             title = "Preferred quality"

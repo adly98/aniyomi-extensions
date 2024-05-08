@@ -2,8 +2,10 @@ package eu.kanade.tachiyomi.animeextension.en.superstream
 
 import android.app.Application
 import android.content.SharedPreferences
+import android.widget.Toast
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
+import androidx.preference.SwitchPreferenceCompat
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.AnimesPage
@@ -14,9 +16,7 @@ import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import okhttp3.OkHttpClient
 import okhttp3.Response
-import rx.Observable
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
@@ -33,26 +33,24 @@ class SuperStream : ConfigurableAnimeSource, AnimeHttpSource() {
 
     private val json: Json by injectLazy()
 
-    private val superStreamAPI = SuperStreamAPI(json)
+    private val preferences: SharedPreferences = Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
+
+    private val hideNsfw = if (preferences.getBoolean(PREF_HIDE_NSFW_KEY, PREF_HIDE_NSFW_DEFAULT)) 1 else 0
+
+    private val superStreamAPI = SuperStreamAPI(json, hideNsfw)
 
     override val baseUrl = superStreamAPI.apiUrl
 
-    override val client: OkHttpClient = network.cloudflareClient
-
-    private val preferences: SharedPreferences by lazy {
-        Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
-    }
-
-    override fun fetchPopularAnime(page: Int): Observable<AnimesPage> {
+    override suspend fun getPopularAnime(page: Int): AnimesPage {
         val animes = superStreamAPI.getMainPage(page)
-        return Observable.just(animes)
+        return animes
     }
 
-    override fun popularAnimeRequest(page: Int) = throw Exception("not used")
+    override fun popularAnimeRequest(page: Int) = throw UnsupportedOperationException()
 
-    override fun popularAnimeParse(response: Response) = throw Exception("not used")
+    override fun popularAnimeParse(response: Response) = throw UnsupportedOperationException()
 
-    override fun fetchEpisodeList(anime: SAnime): Observable<List<SEpisode>> {
+    override suspend fun getEpisodeList(anime: SAnime): List<SEpisode> {
         val data = superStreamAPI.load(anime.url)
         val episodes = mutableListOf<SEpisode>()
         val (movie, seriesData) = data
@@ -82,27 +80,27 @@ class SuperStream : ConfigurableAnimeSource, AnimeHttpSource() {
                 }
             }
         }
-        return Observable.just(episodes)
+        return episodes
     }
 
-    override fun episodeListParse(response: Response) = throw Exception("not used")
+    override fun episodeListParse(response: Response) = throw UnsupportedOperationException()
 
-    override fun fetchLatestUpdates(page: Int): Observable<AnimesPage> {
+    override suspend fun getLatestUpdates(page: Int): AnimesPage {
         val animes = superStreamAPI.getLatest(page)
-        return Observable.just(animes)
+        return animes
     }
 
-    override fun latestUpdatesParse(response: Response) = throw Exception("not used")
+    override fun latestUpdatesParse(response: Response) = throw UnsupportedOperationException()
 
-    override fun latestUpdatesRequest(page: Int) = throw Exception("not used")
+    override fun latestUpdatesRequest(page: Int) = throw UnsupportedOperationException()
 
-    override fun fetchVideoList(episode: SEpisode): Observable<List<Video>> {
+    override suspend fun getVideoList(episode: SEpisode): List<Video> {
         val videos = superStreamAPI.loadLinks(episode.url)
         val sortedVideos = videos.sort()
-        return Observable.just(sortedVideos)
+        return sortedVideos
     }
 
-    override fun videoListParse(response: Response) = throw Exception("not used")
+    override fun videoListParse(response: Response) = throw UnsupportedOperationException()
 
     override fun List<Video>.sort(): List<Video> {
         val quality = preferences.getString("preferred_quality", "1080")
@@ -123,20 +121,20 @@ class SuperStream : ConfigurableAnimeSource, AnimeHttpSource() {
         return this
     }
 
-    override fun fetchSearchAnime(
+    override suspend fun getSearchAnime(
         page: Int,
         query: String,
         filters: AnimeFilterList,
-    ): Observable<AnimesPage> {
+    ): AnimesPage {
         val searchResult = superStreamAPI.search(page, query)
-        return Observable.just(AnimesPage(searchResult, searchResult.size == 20))
+        return AnimesPage(searchResult, searchResult.size == 20)
     }
 
-    override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList) = throw Exception("not used")
+    override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList) = throw UnsupportedOperationException()
 
-    override fun searchAnimeParse(response: Response) = throw Exception("not used")
+    override fun searchAnimeParse(response: Response) = throw UnsupportedOperationException()
 
-    override fun fetchAnimeDetails(anime: SAnime): Observable<SAnime> {
+    override suspend fun getAnimeDetails(anime: SAnime): SAnime {
         val data = superStreamAPI.load(anime.url)
         val ani = SAnime.create()
         val (movie, seriesData) = data
@@ -187,12 +185,14 @@ class SuperStream : ConfigurableAnimeSource, AnimeHttpSource() {
                         )
             }
         }
-        return Observable.just(ani)
+        return ani
     }
-    override fun animeDetailsParse(response: Response) = throw Exception("not used")
+    override fun animeDetailsParse(response: Response) = throw UnsupportedOperationException()
+
+    // ============================== Settings ==============================
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
-        val videoQualityPref = ListPreference(screen.context).apply {
+        ListPreference(screen.context).apply {
             key = "preferred_quality"
             title = "Preferred quality"
             entries = arrayOf("4k", "1080p", "720p", "480p", "360p", "240p")
@@ -206,8 +206,20 @@ class SuperStream : ConfigurableAnimeSource, AnimeHttpSource() {
                 val entry = entryValues[index] as String
                 preferences.edit().putString(key, entry).commit()
             }
-        }
-        screen.addPreference(videoQualityPref)
+        }.also(screen::addPreference)
+
+        SwitchPreferenceCompat(screen.context).apply {
+            key = PREF_HIDE_NSFW_KEY
+            title = "Hide NSFW content"
+            setDefaultValue(PREF_HIDE_NSFW_DEFAULT)
+            summary = "requires restart"
+
+            setOnPreferenceChangeListener { _, newValue ->
+                val new = newValue as Boolean
+                Toast.makeText(screen.context, "Restart Aniyomi to apply new setting.", Toast.LENGTH_LONG).show()
+                preferences.edit().putBoolean(key, new).commit()
+            }
+        }.also(screen::addPreference)
     }
 
     private fun LinkData.toJson(): String {
@@ -222,3 +234,6 @@ class SuperStream : ConfigurableAnimeSource, AnimeHttpSource() {
         }
     }
 }
+
+private const val PREF_HIDE_NSFW_KEY = "pref_hide_nsfw"
+private const val PREF_HIDE_NSFW_DEFAULT = true

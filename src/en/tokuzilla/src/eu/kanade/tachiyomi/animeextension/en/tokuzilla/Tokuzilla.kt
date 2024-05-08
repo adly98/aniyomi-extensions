@@ -50,15 +50,15 @@ class Tokuzilla : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun popularAnimeNextPageSelector() = "a.next.page-numbers"
 
     // =============================== Latest ===============================
-    override fun latestUpdatesNextPageSelector() = throw Exception("not used")
+    override fun latestUpdatesNextPageSelector() = throw UnsupportedOperationException()
 
-    override fun latestUpdatesFromElement(element: Element) = throw Exception("not used")
+    override fun latestUpdatesFromElement(element: Element) = throw UnsupportedOperationException()
 
-    override fun latestUpdatesRequest(page: Int): Request = throw Exception("not used")
+    override fun latestUpdatesRequest(page: Int): Request = throw UnsupportedOperationException()
 
-    override fun latestUpdatesSelector() = throw Exception("not used")
+    override fun latestUpdatesSelector() = throw UnsupportedOperationException()
 
-    override fun latestUpdatesParse(response: Response) = throw Exception("not used")
+    override fun latestUpdatesParse(response: Response) = throw UnsupportedOperationException()
 
     // =============================== Search ===============================
     override fun searchAnimeFromElement(element: Element) = popularAnimeFromElement(element)
@@ -127,7 +127,7 @@ class Tokuzilla : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // ============================== Episodes ==============================
     override fun episodeListSelector() = "ul.pagination.post-tape a"
     override fun episodeListParse(response: Response): List<SEpisode> {
-        val document = response.use { it.asJsoup() }
+        val document = response.asJsoup()
 
         val episodes = document.select(episodeListSelector())
         return if (episodes.isNotEmpty()) {
@@ -148,11 +148,11 @@ class Tokuzilla : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }
     }
 
-    override fun episodeFromElement(element: Element): SEpisode = throw Exception("not used")
+    override fun episodeFromElement(element: Element): SEpisode = throw UnsupportedOperationException()
 
     // ============================ Video Links =============================
     override fun videoListParse(response: Response): List<Video> {
-        val document = response.use { it.asJsoup() }
+        val document = response.asJsoup()
         val frameLink = document.selectFirst("iframe[id=frame]")!!.attr("src")
         return ChillxExtractor(client, headers).videoFromUrl(frameLink, baseUrl)
     }
@@ -165,9 +165,9 @@ class Tokuzilla : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         ).reversed()
     }
 
-    override fun videoListSelector() = throw Exception("not used")
-    override fun videoFromElement(element: Element) = throw Exception("not used")
-    override fun videoUrlParse(document: Document) = throw Exception("not used")
+    override fun videoListSelector() = throw UnsupportedOperationException()
+    override fun videoFromElement(element: Element) = throw UnsupportedOperationException()
+    override fun videoUrlParse(document: Document) = throw UnsupportedOperationException()
 
     // ============================= Preference =============================
     override fun setupPreferenceScreen(screen: PreferenceScreen) {

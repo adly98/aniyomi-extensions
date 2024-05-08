@@ -5,7 +5,6 @@ import android.content.SharedPreferences
 import androidx.preference.ListPreference
 import androidx.preference.MultiSelectListPreference
 import androidx.preference.PreferenceScreen
-import eu.kanade.tachiyomi.animeextension.en.fmovies.extractors.VidsrcExtractor
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.SAnime
@@ -15,23 +14,21 @@ import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.lib.filemoonextractor.FilemoonExtractor
 import eu.kanade.tachiyomi.lib.streamtapeextractor.StreamTapeExtractor
+import eu.kanade.tachiyomi.lib.vidsrcextractor.VidsrcExtractor
 import eu.kanade.tachiyomi.network.GET
-import eu.kanade.tachiyomi.network.asObservableSuccess
+import eu.kanade.tachiyomi.network.await
+import eu.kanade.tachiyomi.network.awaitSuccess
 import eu.kanade.tachiyomi.util.asJsoup
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.runBlocking
+import eu.kanade.tachiyomi.util.parallelCatchingFlatMap
+import eu.kanade.tachiyomi.util.parseAs
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import okhttp3.HttpUrl.Companion.toHttpUrl
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import rx.Observable
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
@@ -46,15 +43,13 @@ class FMovies : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val supportsLatest = true
 
-    override val client: OkHttpClient = network.cloudflareClient
-
     private val json: Json by injectLazy()
 
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
     }
 
-    private val vrfHelper by lazy { FMoviesHelper(client, headers) }
+    private val utils by lazy { FmoviesUtils(client, headers) }
 
     // ============================== Popular ===============================
 
@@ -112,15 +107,36 @@ class FMovies : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val desc = descElement?.selectFirst("div[data-name=full]")?.ownText() ?: descElement?.ownText() ?: ""
         val extraInfo = detail?.select("> div")?.joinToString("\n") { it.text() } ?: ""
 
+        val mediaTitle = info.selectFirst("h1.name")!!.text()
+        val mediaDetail = utils.getDetail(mediaTitle)
+
         return SAnime.create().apply {
-            title = info.selectFirst("h1.name")!!.text()
-            thumbnail_url = document.selectFirst("section#w-info > div.poster img")!!.attr("src")
-            description = if (desc.isBlank()) extraInfo else "$desc\n\n$extraInfo"
-            genre = detail?.let {
-                it.select("> div:has(> div:contains(Genre:)) span").joinToString(", ") { it.text() }
+            title = mediaTitle
+            status = when (mediaDetail?.status) {
+                "Ended", "Released" -> SAnime.COMPLETED
+                "In Production" -> SAnime.LICENSED
+                "Canceled" -> SAnime.CANCELLED
+                "Returning Series" -> {
+                    mediaDetail.nextEpisode?.let { SAnime.ONGOING } ?: SAnime.ON_HIATUS
+                }
+                else -> SAnime.UNKNOWN
             }
-            author = detail?.let {
-                it.select("> div:has(> div:contains(Production:)) span").joinToString(", ") { it.text() }
+            thumbnail_url = document.selectFirst("section#w-info > div.poster img")!!.attr("src")
+            description = buildString {
+                appendLine(desc.ifBlank { mediaDetail?.overview })
+                appendLine()
+                mediaDetail?.nextEpisode?.let {
+                    appendLine("Next: Ep ${it.epNumber} - ${it.name}")
+                    appendLine("Air Date: ${it.airDate}")
+                    appendLine()
+                }
+                appendLine(extraInfo)
+            }
+            genre = detail?.let { dtl ->
+                dtl.select("> div:has(> div:contains(Genre:)) span").joinToString { it.text() }
+            }
+            author = detail?.let { dtl ->
+                dtl.select("> div:has(> div:contains(Production:)) span").joinToString { it.text() }
             }
         }
     }
@@ -131,8 +147,7 @@ class FMovies : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val id = client.newCall(GET(baseUrl + anime.url)).execute().asJsoup()
             .selectFirst("div[data-id]")!!.attr("data-id")
 
-        val vrf = vrfHelper.getVrf(id)
-
+        val vrf = utils.vrfEncrypt(id)
         val vrfHeaders = headers.newBuilder().apply {
             add("Accept", "application/json, text/javascript, */*; q=0.01")
             add("Host", baseUrl.toHttpUrl().host)
@@ -178,23 +193,23 @@ class FMovies : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return episodeList.reversed()
     }
 
-    override fun episodeListSelector() = throw Exception("Not used")
+    override fun episodeListSelector() = throw UnsupportedOperationException()
 
-    override fun episodeFromElement(element: Element): SEpisode = throw Exception("Not used")
+    override fun episodeFromElement(element: Element): SEpisode = throw UnsupportedOperationException()
 
     // ============================ Video Links =============================
 
-    override fun fetchVideoList(episode: SEpisode): Observable<List<Video>> {
+    override suspend fun getVideoList(episode: SEpisode): List<Video> {
         return client.newCall(videoListRequest(episode))
-            .asObservableSuccess()
-            .map { response ->
+            .awaitSuccess()
+            .let { response ->
                 videoListParse(response, episode).sort()
             }
     }
 
     override fun videoListRequest(episode: SEpisode): Request {
         val data = json.decodeFromString<EpisodeInfo>(episode.url)
-        val vrf = vrfHelper.getVrf(data.id)
+        val vrf = utils.vrfEncrypt(data.id)
 
         val vrfHeaders = headers.newBuilder()
             .add("Accept", "application/json, text/javascript, */*; q=0.01")
@@ -210,56 +225,56 @@ class FMovies : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     private val filemoonExtractor by lazy { FilemoonExtractor(client) }
     private val streamtapeExtractor by lazy { StreamTapeExtractor(client) }
 
-    private fun videoListParse(response: Response, episode: SEpisode): List<Video> {
+    private suspend fun videoListParse(response: Response, episode: SEpisode): List<Video> {
         val data = json.decodeFromString<EpisodeInfo>(episode.url)
         val document = Jsoup.parse(
             response.parseAs<AjaxResponse>().result,
         )
         val hosterSelection = preferences.getStringSet(PREF_HOSTER_KEY, PREF_HOSTER_DEFAULT)!!
 
-        return document.select("ul.servers > li.server").parallelMap { server ->
-            runCatching {
-                val name = server.text().trim()
-                if (!hosterSelection.contains(name)) return@runCatching emptyList()
+        return document.select("ul.servers > li.server").parallelCatchingFlatMap { server ->
+            val name = server.text().trim()
+            if (!hosterSelection.contains(name)) return@parallelCatchingFlatMap emptyList()
 
-                // Get decrypted url
-                val vrf = vrfHelper.getVrf(server.attr("data-link-id"))
+            // Get decrypted url
+            val vrf = utils.vrfEncrypt(server.attr("data-link-id"))
 
-                val vrfHeaders = headers.newBuilder()
-                    .add("Accept", "application/json, text/javascript, */*; q=0.01")
-                    .add("Host", baseUrl.toHttpUrl().host)
-                    .add("Referer", data.url)
-                    .add("X-Requested-With", "XMLHttpRequest")
-                    .build()
-                val encrypted = client.newCall(
-                    GET("$baseUrl/ajax/server/${server.attr("data-link-id")}?vrf=$vrf", headers = vrfHeaders),
-                ).execute().parseAs<AjaxServerResponse>().result.url
+            val vrfHeaders = headers.newBuilder()
+                .add("Accept", "application/json, text/javascript, */*; q=0.01")
+                .add("Host", baseUrl.toHttpUrl().host)
+                .add("Referer", data.url)
+                .add("X-Requested-With", "XMLHttpRequest")
+                .build()
+            val encrypted = client.newCall(
+                GET("$baseUrl/ajax/server/${server.attr("data-link-id")}?vrf=$vrf", headers = vrfHeaders),
+            ).await().parseAs<AjaxServerResponse>().result.url
 
-                val decrypted = vrfHelper.decrypt(encrypted)
-
-                when (name) {
-                    "Vidplay", "MyCloud" -> vidsrcExtractor.videosFromUrl(decrypted, name)
-                    "Filemoon" -> filemoonExtractor.videosFromUrl(decrypted, headers = headers)
-                    "Streamtape" -> {
-                        val subtitleList = decrypted.toHttpUrl().queryParameter("sub.info")?.let {
-                            client.newCall(GET(it, headers)).execute().parseAs<List<FMoviesSubs>>().map { t ->
-                                Track(t.file, t.label)
-                            }
-                        } ?: emptyList()
-
-                        streamtapeExtractor.videoFromUrl(decrypted, subtitleList = subtitleList)?.let(::listOf) ?: emptyList()
-                    }
-                    else -> emptyList()
+            val decrypted = utils.vrfDecrypt(encrypted)
+            when (name) {
+                "Vidplay", "MyCloud" -> {
+                    val subs = client.newCall(
+                        GET("$baseUrl/ajax/episode/subtitles/${data.id}"),
+                    ).execute().toTracks()
+                    vidsrcExtractor.videosFromUrl(decrypted, name, subtitleList = subs)
                 }
-            }.getOrElse { emptyList() }
-        }.flatten().ifEmpty { throw Exception("Failed to fetch videos") }
+                "Filemoon" -> filemoonExtractor.videosFromUrl(decrypted, headers = headers)
+                "Streamtape" -> {
+                    val subtitleList = decrypted.toHttpUrl().queryParameter("sub.info")?.let {
+                        client.newCall(GET(it, headers)).await().toTracks()
+                    } ?: emptyList()
+
+                    streamtapeExtractor.videoFromUrl(decrypted, subtitleList = subtitleList)?.let(::listOf) ?: emptyList()
+                }
+                else -> emptyList()
+            }
+        }
     }
 
-    override fun videoListSelector() = throw Exception("not used")
+    override fun videoListSelector() = throw UnsupportedOperationException()
 
-    override fun videoFromElement(element: Element) = throw Exception("not used")
+    override fun videoFromElement(element: Element) = throw UnsupportedOperationException()
 
-    override fun videoUrlParse(document: Document) = throw Exception("not used")
+    override fun videoUrlParse(document: Document) = throw UnsupportedOperationException()
 
     // ============================= Utilities ==============================
 
@@ -276,20 +291,14 @@ class FMovies : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         ).reversed()
     }
 
-    private inline fun <reified T> Response.parseAs(): T {
-        val responseBody = use { it.body.string() }
-        return json.decodeFromString(responseBody)
-    }
-
-    // From Dopebox
-    private fun <A, B> Iterable<A>.parallelMap(f: suspend (A) -> B): List<B> =
-        runBlocking {
-            map { async(Dispatchers.Default) { f(it) } }.awaitAll()
-        }
-
     private fun Int.toPageQuery(first: Boolean = true): String {
         return if (this == 1) "" else "${if (first) "?" else "&"}page=$this"
     }
+
+    private fun Response.toTracks(): List<Track> = parseAs<List<FMoviesSubs>>()
+        .map { t ->
+            Track(t.file, t.label)
+        }
 
     companion object {
         private val HOSTERS = arrayOf(

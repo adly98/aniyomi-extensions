@@ -1,12 +1,5 @@
 package eu.kanade.tachiyomi.animeextension.en.ask4movie
 
-import android.app.Application
-import android.content.SharedPreferences
-import android.widget.Toast
-import androidx.preference.EditTextPreference
-import androidx.preference.PreferenceScreen
-import eu.kanade.tachiyomi.animeextension.BuildConfig
-import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilter
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.AnimesPage
@@ -17,31 +10,22 @@ import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.lib.filemoonextractor.FilemoonExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import rx.Observable
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
-import java.lang.Exception
 
-class Ask4Movie : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
+class Ask4Movie : ParsedAnimeHttpSource() {
 
     override val name = "Ask4Movie"
 
-    override val baseUrl by lazy { preferences.getString(PREF_DOMAIN_KEY, PREF_DOMAIN_DEFAULT)!! }
+    // TODO: Check frequency of url changes to potentially
+    // add back overridable baseurl preference
+    override val baseUrl = "https://ask4movie.li"
 
     override val lang = "en"
 
     override val supportsLatest = true
-
-    override val client: OkHttpClient = network.cloudflareClient
-
-    private val preferences: SharedPreferences by lazy {
-        Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
-    }
 
     // ============================== Popular ===============================
 
@@ -168,23 +152,23 @@ class Ask4Movie : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         )
     }
 
-    override fun episodeListSelector() = throw Exception("Not used")
+    override fun episodeListSelector() = throw UnsupportedOperationException()
 
-    override fun episodeFromElement(element: Element): SEpisode = throw Exception("Not used")
+    override fun episodeFromElement(element: Element): SEpisode = throw UnsupportedOperationException()
 
     // ============================ Video Links =============================
 
-    override fun fetchVideoList(episode: SEpisode): Observable<List<Video>> {
+    override suspend fun getVideoList(episode: SEpisode): List<Video> {
         val videoList = FilemoonExtractor(client).videosFromUrl(episode.url, headers = headers)
         require(videoList.isNotEmpty()) { "Failed to fetch videos" }
-        return Observable.just(videoList)
+        return videoList
     }
 
-    override fun videoListSelector() = throw Exception("not used")
+    override fun videoListSelector() = throw UnsupportedOperationException()
 
-    override fun videoFromElement(element: Element) = throw Exception("not used")
+    override fun videoFromElement(element: Element) = throw UnsupportedOperationException()
 
-    override fun videoUrlParse(document: Document) = throw Exception("not used")
+    override fun videoUrlParse(document: Document) = throw UnsupportedOperationException()
 
     // ============================= Utilities ==============================
 
@@ -194,32 +178,6 @@ class Ask4Movie : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         } else {
             "page/$this"
         }
-    }
-
-    companion object {
-        private val PREF_DOMAIN_KEY = "preferred_domain_name_v${BuildConfig.VERSION_NAME}"
-        private const val PREF_DOMAIN_TITLE = "Override BaseUrl"
-        private const val PREF_DOMAIN_DEFAULT = "https://ask4movie.li"
-        private const val PREF_DOMAIN_SUMMARY = "For temporary uses. Updating the extension will erase this setting."
-    }
-
-    // ============================== Settings ==============================
-
-    override fun setupPreferenceScreen(screen: PreferenceScreen) {
-        EditTextPreference(screen.context).apply {
-            key = PREF_DOMAIN_KEY
-            title = PREF_DOMAIN_TITLE
-            summary = PREF_DOMAIN_SUMMARY
-            dialogTitle = PREF_DOMAIN_TITLE
-            dialogMessage = "Default: $PREF_DOMAIN_DEFAULT"
-            setDefaultValue(PREF_DOMAIN_DEFAULT)
-
-            setOnPreferenceChangeListener { _, newValue ->
-                val newValueString = newValue as String
-                Toast.makeText(screen.context, "Restart Aniyomi to apply new setting.", Toast.LENGTH_LONG).show()
-                preferences.edit().putString(key, newValueString.trim()).commit()
-            }
-        }.also(screen::addPreference)
     }
 
     // ============================== Filters ===============================

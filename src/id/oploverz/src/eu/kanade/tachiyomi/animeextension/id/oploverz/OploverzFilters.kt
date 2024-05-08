@@ -226,6 +226,7 @@ object OploverzFilters {
             Pair("Winter 2021", "winter-2021"),
             Pair("Winter 2022", "winter-2022"),
             Pair("Winter 2023", "winter-2023"),
+            Pair("Winter 2024", "winter-2024"),
         )
 
         val STUDIO = arrayOf(
@@ -255,6 +256,7 @@ object OploverzFilters {
             Pair("Doga Kobo", "doga-kobo"),
             Pair("DR Movie", "dr-movie"),
             Pair("Drive", "drive"),
+            Pair("E&H Production", "eh-production"),
             Pair("Encourage Films", "encourage-films"),
             Pair("Feel", "feel"),
             Pair("Gallop", "gallop"),
@@ -293,6 +295,7 @@ object OploverzFilters {
             Pair("SANZIGEN", "sanzigen"),
             Pair("Satelight", "satelight"),
             Pair("Sentai Filmworks", "sentai-filmworks"),
+            Pair("Seven Arcs", "seven-arcs"),
             Pair("Shaft", "shaft"),
             Pair("Shin-Ei Animation", "shin-ei-animation"),
             Pair("Shuka", "shuka"),

@@ -19,14 +19,12 @@ import eu.kanade.tachiyomi.lib.voeextractor.VoeExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
 import okhttp3.Headers
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.lang.Exception
 
 class FilmPalast : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
@@ -37,8 +35,6 @@ class FilmPalast : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override val lang = "de"
 
     override val supportsLatest = true
-
-    override val client: OkHttpClient = network.cloudflareClient
 
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
@@ -61,7 +57,7 @@ class FilmPalast : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     // episodes
 
-    override fun episodeListSelector() = throw Exception("not used")
+    override fun episodeListSelector() = throw UnsupportedOperationException()
 
     override fun episodeListParse(response: Response): List<SEpisode> {
         val document = response.asJsoup()
@@ -74,7 +70,7 @@ class FilmPalast : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return episodeList.reversed()
     }
 
-    override fun episodeFromElement(element: Element): SEpisode = throw Exception("not used")
+    override fun episodeFromElement(element: Element): SEpisode = throw UnsupportedOperationException()
 
     // Video Extractor
 
@@ -92,8 +88,7 @@ class FilmPalast : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             }
             when {
                 url.contains("https://voe.sx") && hosterSelection.contains("voe") ->
-                    VoeExtractor(client).videoFromUrl(url, "Voe")
-                        ?.let(::listOf)
+                    VoeExtractor(client).videosFromUrl(url)
 
                 url.contains("https://upstream.to") && hosterSelection.contains("up") ->
                     UpstreamExtractor(client).videoFromUrl(url)
@@ -144,7 +139,7 @@ class FilmPalast : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
                 "wolfstream" in url && hosterSelection.contains("wolf") -> {
                     client.newCall(GET(url, headers)).execute()
-                        .use { it.asJsoup() }
+                        .asJsoup()
                         .selectFirst("script:containsData(sources)")
                         ?.data()
                         ?.let { jsData ->
@@ -164,11 +159,11 @@ class FilmPalast : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         ).reversed()
     }
 
-    override fun videoListSelector() = throw Exception("not used")
+    override fun videoListSelector() = throw UnsupportedOperationException()
 
-    override fun videoFromElement(element: Element) = throw Exception("not used")
+    override fun videoFromElement(element: Element) = throw UnsupportedOperationException()
 
-    override fun videoUrlParse(document: Document) = throw Exception("not used")
+    override fun videoUrlParse(document: Document) = throw UnsupportedOperationException()
 
     // Search
 

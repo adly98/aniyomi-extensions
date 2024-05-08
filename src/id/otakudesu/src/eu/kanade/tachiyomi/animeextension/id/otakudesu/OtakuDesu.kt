@@ -17,10 +17,8 @@ import eu.kanade.tachiyomi.lib.youruploadextractor.YourUploadExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.util.asJsoup
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.runBlocking
+import eu.kanade.tachiyomi.util.parallelCatchingFlatMapBlocking
+import eu.kanade.tachiyomi.util.parallelMapNotNullBlocking
 import okhttp3.FormBody
 import okhttp3.Request
 import okhttp3.Response
@@ -29,7 +27,6 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.lang.Exception
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -37,13 +34,11 @@ class OtakuDesu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val name = "OtakuDesu"
 
-    override val baseUrl = "https://otakudesu.cam"
+    override val baseUrl = "https://otakudesu.cloud"
 
     override val lang = "id"
 
     override val supportsLatest = true
-
-    override val client = network.cloudflareClient
 
     private val preferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
@@ -116,7 +111,7 @@ class OtakuDesu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun popularAnimeSelector() = latestUpdatesSelector()
 
     // =============================== Search ===============================
-    override fun searchAnimeFromElement(element: Element): SAnime = throw Exception("not used")
+    override fun searchAnimeFromElement(element: Element): SAnime = throw UnsupportedOperationException()
 
     private fun searchAnimeFromElement(element: Element, ui: String): SAnime {
         return SAnime.create().apply {
@@ -177,7 +172,7 @@ class OtakuDesu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun videoListSelector() = "div.mirrorstream ul li > a"
 
     override fun videoListParse(response: Response): List<Video> {
-        val doc = response.use { it.asJsoup() }
+        val doc = response.asJsoup()
         val script = doc.selectFirst("script:containsData({action:)")!!
             .data()
 
@@ -187,14 +182,12 @@ class OtakuDesu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val nonce = getNonce(nonceAction)
 
         return doc.select(videoListSelector())
-            .parallelMapNotNull {
+            .parallelMapNotNullBlocking {
                 runCatching { getEmbedLinks(it, action, nonce) }.getOrNull()
             }
-            .parallelMapNotNull {
-                runCatching {
-                    getVideosFromEmbed(it.first, it.second)
-                }.getOrNull()
-            }.flatten()
+            .parallelCatchingFlatMapBlocking {
+                getVideosFromEmbed(it.first, it.second)
+            }
     }
 
     private fun getEmbedLinks(element: Element, action: String, nonce: String): Pair<String, String> {
@@ -216,7 +209,7 @@ class OtakuDesu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
         val doc = client.newCall(POST("$baseUrl/wp-admin/admin-ajax.php", body = form))
             .execute()
-            .use { it.body.string() }
+            .body.string()
             .substringAfter(":\"")
             .substringBefore('"')
             .b64Decode()
@@ -241,7 +234,7 @@ class OtakuDesu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 yourUploadExtractor.videoFromUrl(url, headers, "YourUpload - $quality")
             }
             "desustream" in link -> {
-                client.newCall(GET(link, headers)).execute().use {
+                client.newCall(GET(link, headers)).execute().let {
                     val doc = it.asJsoup()
                     val script = doc.selectFirst("script:containsData(sources)")!!.data()
                     val videoUrl = script.substringAfter("sources:[{")
@@ -251,7 +244,7 @@ class OtakuDesu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 }
             }
             "mp4upload" in link -> {
-                client.newCall(GET(link, headers)).execute().use {
+                client.newCall(GET(link, headers)).execute().let {
                     val doc = it.asJsoup()
                     val script = doc.selectFirst("script:containsData(player.src)")!!.data()
                     val videoUrl = script.substringAfter("src: \"").substringBefore('"')
@@ -266,13 +259,13 @@ class OtakuDesu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val form = FormBody.Builder().add("action", action).build()
         return client.newCall(POST("$baseUrl/wp-admin/admin-ajax.php", body = form))
             .execute()
-            .use {
-                it.body.string().substringAfter(":\"").substringBefore('"')
-            }
+            .body.string()
+            .substringAfter(":\"")
+            .substringBefore('"')
     }
 
-    override fun videoFromElement(element: Element) = throw Exception("not used")
-    override fun videoUrlParse(document: Document) = throw Exception("not used")
+    override fun videoFromElement(element: Element) = throw UnsupportedOperationException()
+    override fun videoUrlParse(document: Document) = throw UnsupportedOperationException()
 
     // ============================== Filters ===============================
     override fun getFilterList(): AnimeFilterList = AnimeFilterList(
@@ -369,11 +362,6 @@ class OtakuDesu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             compareByDescending { it.quality.contains(quality) },
         )
     }
-
-    private inline fun <A, B> Iterable<A>.parallelMapNotNull(crossinline f: suspend (A) -> B?): List<B> =
-        runBlocking {
-            map { async(Dispatchers.Default) { f(it) } }.awaitAll().filterNotNull()
-        }
 
     private fun String.b64Decode(): String {
         return String(Base64.decode(this, Base64.DEFAULT))

@@ -1,12 +1,7 @@
-apply plugin: 'com.android.application'
-apply plugin: 'kotlin-android'
-
 ext {
-    extName = 'فاصل اعلاني'
-    pkgNameSuffix = 'ar.faselhd'
+    extName = 'FASELHD'
     extClass = '.FASELHD'
-    extVersionCode = 13
-    libVersion = '13'
+    extVersionCode = 14
 }
 
 apply from: "$rootDir/common.gradle"

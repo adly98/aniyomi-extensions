@@ -1,11 +1,11 @@
 package eu.kanade.tachiyomi.lib.mp4uploadextractor
 
+import dev.datlag.jsunpacker.JsUnpacker
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
 import okhttp3.Headers
 import okhttp3.OkHttpClient
-import dev.datlag.jsunpacker.JsUnpacker
 
 class Mp4uploadExtractor(private val client: OkHttpClient) {
     fun videosFromUrl(url: String, headers: Headers, prefix: String = "", suffix: String = ""): List<Video> {
@@ -13,7 +13,7 @@ class Mp4uploadExtractor(private val client: OkHttpClient) {
             .set("referer", REFERER)
             .build()
 
-        val doc = client.newCall(GET(url, newHeaders)).execute().use { it.asJsoup() }
+        val doc = client.newCall(GET(url, newHeaders)).execute().asJsoup()
 
         val script = doc.selectFirst("script:containsData(eval):containsData(p,a,c,k,e,d)")?.data()
             ?.let(JsUnpacker::unpackAndCombine)

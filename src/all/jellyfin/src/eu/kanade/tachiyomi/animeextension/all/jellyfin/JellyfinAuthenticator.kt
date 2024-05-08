@@ -4,7 +4,10 @@ import android.content.SharedPreferences
 import android.os.Build
 import android.util.Log
 import eu.kanade.tachiyomi.AppInfo
+import eu.kanade.tachiyomi.animeextension.all.jellyfin.Jellyfin.Companion.APIKEY_KEY
+import eu.kanade.tachiyomi.animeextension.all.jellyfin.Jellyfin.Companion.USERID_KEY
 import eu.kanade.tachiyomi.network.POST
+import eu.kanade.tachiyomi.util.parseAs
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
@@ -13,7 +16,6 @@ import okhttp3.Headers
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
-import okhttp3.Response
 import uy.kohesive.injekt.injectLazy
 
 class JellyfinAuthenticator(
@@ -27,8 +29,8 @@ class JellyfinAuthenticator(
     fun login(username: String, password: String): Pair<String?, String?> {
         return runCatching {
             val authResult = authenticateWithPassword(username, password)
-            val key = authResult.AccessToken
-            val userId = authResult.SessionInfo.UserId
+            val key = authResult.accessToken
+            val userId = authResult.sessionInfo.userId
             saveLogin(key, userId)
             Pair(key, userId)
         }.getOrElse {
@@ -37,7 +39,7 @@ class JellyfinAuthenticator(
         }
     }
 
-    private fun authenticateWithPassword(username: String, password: String): LoginResponse {
+    private fun authenticateWithPassword(username: String, password: String): LoginDto {
         var deviceId = getPrefDeviceId()
         if (deviceId.isNullOrEmpty()) {
             deviceId = getRandomString()
@@ -69,8 +71,8 @@ class JellyfinAuthenticator(
 
     private fun saveLogin(key: String, userId: String) {
         preferences.edit()
-            .putString(JFConstants.APIKEY_KEY, key)
-            .putString(JFConstants.USERID_KEY, userId)
+            .putString(APIKEY_KEY, key)
+            .putString(USERID_KEY, userId)
             .apply()
     }
 
@@ -83,11 +85,6 @@ class JellyfinAuthenticator(
         DEVICEID_KEY,
         value,
     ).apply()
-
-    private inline fun <reified T> Response.parseAs(transform: (String) -> String = { it }): T {
-        val responseBody = use { transform(it.body.string()) }
-        return json.decodeFromString(responseBody)
-    }
 
     companion object {
         private const val DEVICEID_KEY = "device_id"

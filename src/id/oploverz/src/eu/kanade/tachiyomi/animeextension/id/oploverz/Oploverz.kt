@@ -14,10 +14,8 @@ import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.util.asJsoup
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.runBlocking
+import eu.kanade.tachiyomi.util.parallelCatchingFlatMapBlocking
+import eu.kanade.tachiyomi.util.parallelMapNotNullBlocking
 import okhttp3.FormBody
 import okhttp3.Request
 import okhttp3.Response
@@ -30,7 +28,7 @@ import java.util.Locale
 
 class Oploverz : ConfigurableAnimeSource, AnimeHttpSource() {
     override val name: String = "Oploverz"
-    override val baseUrl: String = "https://oploverz.red"
+    override val baseUrl: String = "https://oploverz.plus"
     override val lang: String = "id"
     override val supportsLatest: Boolean = true
 
@@ -105,13 +103,15 @@ class Oploverz : ConfigurableAnimeSource, AnimeHttpSource() {
 
     override fun videoListParse(response: Response): List<Video> {
         val doc = response.asJsoup()
+        val parseUrl = response.request.url.toUrl()
+        val url = "${parseUrl.protocol}://${parseUrl.host}"
         return doc.select("#server > ul > li > div.east_player_option")
-            .parallelMapNotNull {
-                runCatching { getEmbedLinks(it) }.getOrNull()
+            .parallelMapNotNullBlocking {
+                runCatching { getEmbedLinks(url, it) }.getOrNull()
             }
-            .parallelMapNotNull {
-                runCatching { getVideosFromEmbed(it.first) }.getOrNull()
-            }.flatten()
+            .parallelCatchingFlatMapBlocking {
+                getVideosFromEmbed(it.first)
+            }
     }
 
     // ============================= Utilities ==============================
@@ -134,12 +134,6 @@ class Oploverz : ConfigurableAnimeSource, AnimeHttpSource() {
                     else -> it
                 }.trim()
             }
-    }
-
-    private inline fun <A, B> Iterable<A>.parallelMapNotNull(crossinline f: suspend (A) -> B?): List<B> {
-        return runBlocking {
-            map { async(Dispatchers.Default) { f(it) } }.awaitAll().filterNotNull()
-        }
     }
 
     private fun getAnimeParse(response: Response, query: String): AnimesPage {
@@ -170,22 +164,22 @@ class Oploverz : ConfigurableAnimeSource, AnimeHttpSource() {
         }
     }
 
-    private fun getEmbedLinks(element: Element): Pair<String, String> {
+    private fun getEmbedLinks(url: String, element: Element): Pair<String, String> {
         val form = FormBody.Builder().apply {
             add("action", "player_ajax")
             add("post", element.attr("data-post"))
             add("nume", element.attr("data-nume"))
             add("type", element.attr("data-type"))
         }.build()
-        return client.newCall(POST("$baseUrl/wp-admin/admin-ajax.php", body = form))
+        return client.newCall(POST("$url/wp-admin/admin-ajax.php", body = form))
             .execute()
-            .use { Pair(it.asJsoup().selectFirst(".playeriframe")!!.attr("src"), "") }
+            .let { Pair(it.asJsoup().selectFirst(".playeriframe")!!.attr("src"), "") }
     }
 
     private fun getVideosFromEmbed(link: String): List<Video> {
         return when {
             "blogger" in link -> {
-                client.newCall(GET(link)).execute().use { it.body.string() }.let {
+                client.newCall(GET(link)).execute().body.string().let {
                     val json = JSONObject(it.substringAfter("= ").substringBefore("<"))
                     val streams = json.getJSONArray("streams")
                     val videoList = mutableListOf<Video>()

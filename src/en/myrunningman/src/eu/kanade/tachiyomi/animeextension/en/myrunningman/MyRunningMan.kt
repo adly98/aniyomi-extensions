@@ -10,19 +10,15 @@ import eu.kanade.tachiyomi.lib.doodextractor.DoodExtractor
 import eu.kanade.tachiyomi.lib.mixdropextractor.MixDropExtractor
 import eu.kanade.tachiyomi.lib.streamtapeextractor.StreamTapeExtractor
 import eu.kanade.tachiyomi.network.GET
-import eu.kanade.tachiyomi.network.asObservableSuccess
+import eu.kanade.tachiyomi.network.awaitSuccess
 import eu.kanade.tachiyomi.util.asJsoup
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.runBlocking
+import eu.kanade.tachiyomi.util.parallelCatchingFlatMapBlocking
+import eu.kanade.tachiyomi.util.parseAs
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import rx.Observable
 import uy.kohesive.injekt.injectLazy
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -65,19 +61,19 @@ class MyRunningMan : ParsedAnimeHttpSource() {
     override fun latestUpdatesNextPageSelector() = popularAnimeNextPageSelector()
 
     // =============================== Search ===============================
-    override fun fetchSearchAnime(page: Int, query: String, filters: AnimeFilterList): Observable<AnimesPage> {
+    override suspend fun getSearchAnime(page: Int, query: String, filters: AnimeFilterList): AnimesPage {
         return if (query.startsWith(PREFIX_SEARCH)) { // URL intent handler
             val id = query.removePrefix(PREFIX_SEARCH)
             client.newCall(GET("$baseUrl/ep/$id"))
-                .asObservableSuccess()
-                .map(::searchAnimeByIdParse)
+                .awaitSuccess()
+                .use(::searchAnimeByIdParse)
         } else {
-            super.fetchSearchAnime(page, query, filters)
+            super.getSearchAnime(page, query, filters)
         }
     }
 
     private fun searchAnimeByIdParse(response: Response): AnimesPage {
-        val details = animeDetailsParse(response.use { it.asJsoup() })
+        val details = animeDetailsParse(response.asJsoup())
         return AnimesPage(listOf(details), false)
     }
 
@@ -104,11 +100,11 @@ class MyRunningMan : ParsedAnimeHttpSource() {
     }
 
     override fun searchAnimeSelector(): String {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     override fun searchAnimeFromElement(element: Element): SAnime {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     override fun searchAnimeNextPageSelector() = null
@@ -137,7 +133,7 @@ class MyRunningMan : ParsedAnimeHttpSource() {
 
     // ============================== Episodes ==============================
     override fun episodeListParse(response: Response): List<SEpisode> {
-        val doc = response.use { it.asJsoup() }
+        val doc = response.asJsoup()
         return listOf(
             SEpisode.create().apply {
                 setUrlWithoutDomain(doc.location())
@@ -157,11 +153,11 @@ class MyRunningMan : ParsedAnimeHttpSource() {
     }
 
     override fun episodeListSelector(): String {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     override fun episodeFromElement(element: Element): SEpisode {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     // ============================ Video Links =============================
@@ -170,24 +166,22 @@ class MyRunningMan : ParsedAnimeHttpSource() {
     private val streamtapeExtractor by lazy { StreamTapeExtractor(client) }
 
     override fun videoListParse(response: Response): List<Video> {
-        val doc = response.use { it.asJsoup() }
+        val doc = response.asJsoup()
 
         return doc.select("a.changePlayer")
             .mapNotNull { getUrlById(it.attr("data-url")) }
-            .parallelMap { url ->
-                runCatching {
-                    when {
-                        url.contains("dooo") -> doodExtractor.videosFromUrl(url)
-                        url.contains("mixdro") -> mixdropExtractor.videoFromUrl(url, referer = doc.location())
-                        url.contains("streamtape.com") -> streamtapeExtractor.videoFromUrl(url)?.let(::listOf)
-                        else -> null
-                    }
-                }.getOrNull() ?: emptyList()
-            }.flatten().ifEmpty { throw Exception("No videos!") }
+            .parallelCatchingFlatMapBlocking { url ->
+                when {
+                    url.contains("dooo") -> doodExtractor.videosFromUrl(url)
+                    url.contains("mixdro") -> mixdropExtractor.videoFromUrl(url, referer = doc.location())
+                    url.contains("streamtape.com") -> streamtapeExtractor.videoFromUrl(url)?.let(::listOf)
+                    else -> null
+                }.orEmpty()
+            }
     }
 
     override fun videoListSelector(): String {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     private fun getUrlById(id: String): String? {
@@ -207,27 +201,19 @@ class MyRunningMan : ParsedAnimeHttpSource() {
     }
 
     override fun videoFromElement(element: Element): Video {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     override fun videoUrlParse(document: Document): String {
-        throw UnsupportedOperationException("Not used.")
+        throw UnsupportedOperationException()
     }
 
     // ============================= Utilities ==============================
-    private inline fun <reified T> Response.parseAs(): T {
-        return use { it.body.string() }.let(json::decodeFromString)
-    }
 
     private fun String.toDate(): Long {
         return runCatching { DATE_FORMATTER.parse(trim())?.time }
             .getOrNull() ?: 0L
     }
-
-    private inline fun <A, B> Iterable<A>.parallelMap(crossinline f: suspend (A) -> B): List<B> =
-        runBlocking {
-            map { async(Dispatchers.Default) { f(it) } }.awaitAll()
-        }
 
     companion object {
         const val PREFIX_SEARCH = "id:"

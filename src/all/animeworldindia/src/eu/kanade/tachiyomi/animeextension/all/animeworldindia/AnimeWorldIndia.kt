@@ -21,7 +21,6 @@ import org.jsoup.nodes.Element
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
-import java.lang.Exception
 
 class AnimeWorldIndia(
     final override val lang: String,
@@ -33,8 +32,6 @@ class AnimeWorldIndia(
     override val baseUrl = "https://anime-world.in"
 
     override val supportsLatest = true
-
-    override val client = network.cloudflareClient
 
     private val json: Json by injectLazy()
 
@@ -111,9 +108,9 @@ class AnimeWorldIndia(
     }
 
     // ============================== Episodes ==============================
-    override fun episodeListSelector() = throw Exception("not used")
+    override fun episodeListSelector() = throw UnsupportedOperationException()
 
-    override fun episodeFromElement(element: Element): SEpisode = throw Exception("not used")
+    override fun episodeFromElement(element: Element): SEpisode = throw UnsupportedOperationException()
 
     @Serializable
     data class SeasonDto(val episodes: EpisodeTypeDto)
@@ -132,7 +129,7 @@ class AnimeWorldIndia(
     }
 
     override fun episodeListParse(response: Response): List<SEpisode> {
-        val document = response.use { it.asJsoup() }
+        val document = response.asJsoup()
         val isMovie = document.selectFirst("nav li > a[href*=\"type/movies/\"]") != null
 
         val seasonsJson = json.decodeFromString<List<SeasonDto>>(
@@ -175,11 +172,11 @@ class AnimeWorldIndia(
     }
 
     // ============================ Video Links =============================
-    override fun videoFromElement(element: Element): Video = throw Exception("not used")
+    override fun videoFromElement(element: Element): Video = throw UnsupportedOperationException()
 
-    override fun videoUrlParse(document: Document) = throw Exception("not used")
+    override fun videoUrlParse(document: Document) = throw UnsupportedOperationException()
 
-    override fun videoListSelector() = throw Exception("not used")
+    override fun videoListSelector() = throw UnsupportedOperationException()
 
     @Serializable
     private data class PlayerDto(
@@ -192,7 +189,7 @@ class AnimeWorldIndia(
     private val mystreamExtractor by lazy { MyStreamExtractor(client, headers) }
 
     override fun videoListParse(response: Response): List<Video> {
-        val body = response.use { it.body.string() }
+        val body = response.body.string()
         val documentTrimmed = body
             .substringAfterLast("\"players\":")
             .substringBefore(",\"noplayer\":")

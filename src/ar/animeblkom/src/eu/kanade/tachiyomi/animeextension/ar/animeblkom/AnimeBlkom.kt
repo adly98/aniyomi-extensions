@@ -32,8 +32,6 @@ class AnimeBlkom : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val supportsLatest = false
 
-    override val client = network.cloudflareClient
-
     override fun headersBuilder() = super.headersBuilder()
         .add("referer", baseUrl)
 
@@ -56,13 +54,13 @@ class AnimeBlkom : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun popularAnimeNextPageSelector() = "ul.pagination li.page-item a[rel=next]"
 
     // =============================== Latest ===============================
-    override fun latestUpdatesRequest(page: Int): Request = throw Exception("Not used")
+    override fun latestUpdatesRequest(page: Int): Request = throw UnsupportedOperationException()
 
-    override fun latestUpdatesSelector(): String = throw Exception("Not used")
+    override fun latestUpdatesSelector(): String = throw UnsupportedOperationException()
 
-    override fun latestUpdatesFromElement(element: Element): SAnime = throw Exception("Not used")
+    override fun latestUpdatesFromElement(element: Element): SAnime = throw UnsupportedOperationException()
 
-    override fun latestUpdatesNextPageSelector(): String = throw Exception("Not used")
+    override fun latestUpdatesNextPageSelector(): String = throw UnsupportedOperationException()
 
     // =============================== Search ===============================
     override fun searchAnimeFromElement(element: Element) = popularAnimeFromElement(element)
@@ -140,7 +138,7 @@ class AnimeBlkom : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     // ============================ Video Links =============================
     override fun videoListParse(response: Response): List<Video> {
-        val document = response.use { it.asJsoup() }
+        val document = response.asJsoup()
         return document.select("span.server a").flatMap {
             runCatching { extractVideos(it) }.getOrElse { emptyList() }
         }
@@ -154,7 +152,7 @@ class AnimeBlkom : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return when {
             ".vid4up" in url || "Blkom" in element.text() -> {
                 val videoDoc = client.newCall(GET(url, headers)).execute()
-                    .use { it.asJsoup() }
+                    .asJsoup()
                 videoDoc.select(videoListSelector()).map(::videoFromElement)
             }
             "ok.ru" in url -> okruExtractor.videosFromUrl(url)
@@ -170,7 +168,7 @@ class AnimeBlkom : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return Video(videoUrl, "Blkom - " + element.attr("label"), videoUrl, headers)
     }
 
-    override fun videoUrlParse(document: Document) = throw Exception("not used")
+    override fun videoUrlParse(document: Document) = throw UnsupportedOperationException()
 
     // ============================== Filters ===============================
     override fun getFilterList() = AnimeFilterList(

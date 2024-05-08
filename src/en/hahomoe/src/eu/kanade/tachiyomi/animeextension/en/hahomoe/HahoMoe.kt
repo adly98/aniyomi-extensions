@@ -19,7 +19,6 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.lang.Exception
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -33,8 +32,6 @@ class HahoMoe : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override val lang = "en"
 
     override val supportsLatest = true
-
-    override val client = network.cloudflareClient
 
     private val preferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
@@ -120,12 +117,12 @@ class HahoMoe : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     private fun episodeNextPageSelector() = popularAnimeNextPageSelector()
 
     override fun episodeListParse(response: Response): List<SEpisode> {
-        var doc = response.use { it.asJsoup() }
+        var doc = response.asJsoup()
         return buildList {
             do {
                 if (isNotEmpty()) {
                     val url = doc.selectFirst(episodeNextPageSelector())!!.absUrl("href")
-                    doc = client.newCall(GET(url)).execute().use { it.asJsoup() }
+                    doc = client.newCall(GET(url)).execute().asJsoup()
                 }
 
                 doc.select(episodeListSelector())
@@ -152,11 +149,11 @@ class HahoMoe : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     // ============================ Video Links =============================
     override fun videoListParse(response: Response): List<Video> {
-        val document = response.use { it.asJsoup() }
+        val document = response.asJsoup()
         val iframe = document.selectFirst("iframe")!!.attr("src")
         val newHeaders = headersBuilder().set("referer", document.location()).build()
         val iframeResponse = client.newCall(GET(iframe, newHeaders)).execute()
-            .use { it.asJsoup() }
+            .asJsoup()
 
         return iframeResponse.select(videoListSelector()).map(::videoFromElement)
     }
@@ -167,7 +164,7 @@ class HahoMoe : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return Video(element.attr("src"), element.attr("title"), element.attr("src"))
     }
 
-    override fun videoUrlParse(document: Document) = throw Exception("not used")
+    override fun videoUrlParse(document: Document) = throw UnsupportedOperationException()
 
     // ============================== Settings ==============================
     override fun setupPreferenceScreen(screen: PreferenceScreen) {

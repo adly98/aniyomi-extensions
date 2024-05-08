@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
 import eu.kanade.tachiyomi.animeextension.es.legionanime.extractors.JkanimeExtractor
+import eu.kanade.tachiyomi.animeextension.es.legionanime.extractors.MediaFireExtractor
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilter
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
@@ -14,10 +15,10 @@ import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.lib.doodextractor.DoodExtractor
-import eu.kanade.tachiyomi.lib.gdriveplayerextractor.GdrivePlayerExtractor
 import eu.kanade.tachiyomi.lib.mp4uploadextractor.Mp4uploadExtractor
 import eu.kanade.tachiyomi.lib.okruextractor.OkruExtractor
 import eu.kanade.tachiyomi.lib.streamtapeextractor.StreamTapeExtractor
+import eu.kanade.tachiyomi.lib.streamwishextractor.StreamWishExtractor
 import eu.kanade.tachiyomi.lib.uqloadextractor.UqloadExtractor
 import eu.kanade.tachiyomi.lib.youruploadextractor.YourUploadExtractor
 import eu.kanade.tachiyomi.network.GET
@@ -29,7 +30,6 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.FormBody
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
@@ -49,8 +49,6 @@ class LegionAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override val lang = "es"
 
     override val supportsLatest = true
-
-    override val client: OkHttpClient = network.cloudflareClient
 
     private val json: Json by injectLazy()
 
@@ -271,6 +269,15 @@ class LegionAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     private fun parseExtractors(url: String, server: String): List<Video> {
         return when {
+            url.contains("streamwish") -> StreamWishExtractor(client, headers).videosFromUrl(url, prefix = "StreamWish")
+            url.contains("mediafire") -> {
+                val video = MediaFireExtractor(client).getVideoFromUrl(url, server)
+                if (video != null) {
+                    listOf(video)
+                } else {
+                    emptyList()
+                }
+            }
             url.contains("streamtape") -> {
                 val video = StreamTapeExtractor(client).videoFromUrl(url, server)
                 if (video != null) {
@@ -280,9 +287,10 @@ class LegionAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 }
             }
             url.contains("jkanime") -> {
-                try {
-                    listOf(JkanimeExtractor(client).getDesuFromUrl(url))
-                } catch (_: Exception) {
+                val video = JkanimeExtractor(client).getDesuFromUrl(url)
+                if (video != null) {
+                    listOf(video)
+                } else {
                     emptyList()
                 }
             }
@@ -318,14 +326,6 @@ class LegionAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             }
             url.contains("ok.ru") -> {
                 OkruExtractor(client).videosFromUrl(url)
-            }
-            url.contains("drive.google") -> {
-                try {
-                    val newUrl = "http://gdriveplayer.to/embed2.php?link=" + url.replace("preview", "view").replace("u/2/", "")
-                    GdrivePlayerExtractor(client).videosFromUrl(newUrl, "Gdrive", headers)
-                } catch (_: Exception) {
-                    emptyList()
-                }
             }
             url.contains("flvvideo") && (url.endsWith(".m3u8") || url.endsWith(".mp4")) -> {
                 if (url.contains("http")) {
@@ -449,31 +449,31 @@ class LegionAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     /* --Unused stuff-- */
 
-    override fun popularAnimeSelector(): String = throw Exception("not used")
+    override fun popularAnimeSelector(): String = throw UnsupportedOperationException()
 
-    override fun popularAnimeFromElement(element: Element): SAnime = throw Exception("not used")
+    override fun popularAnimeFromElement(element: Element): SAnime = throw UnsupportedOperationException()
 
-    override fun popularAnimeNextPageSelector(): String = throw Exception("not used")
+    override fun popularAnimeNextPageSelector(): String = throw UnsupportedOperationException()
 
-    override fun videoFromElement(element: Element): Video = throw Exception("not used")
+    override fun videoFromElement(element: Element): Video = throw UnsupportedOperationException()
 
-    override fun videoListSelector(): String = throw Exception("not used")
+    override fun videoListSelector(): String = throw UnsupportedOperationException()
 
-    override fun videoUrlParse(document: Document): String = throw Exception("not used")
+    override fun videoUrlParse(document: Document): String = throw UnsupportedOperationException()
 
-    override fun searchAnimeSelector(): String = throw Exception("not used")
+    override fun searchAnimeSelector(): String = throw UnsupportedOperationException()
 
-    override fun searchAnimeFromElement(element: Element): SAnime = throw Exception("not used")
+    override fun searchAnimeFromElement(element: Element): SAnime = throw UnsupportedOperationException()
 
-    override fun searchAnimeNextPageSelector(): String = throw Exception("not used")
+    override fun searchAnimeNextPageSelector(): String = throw UnsupportedOperationException()
 
-    override fun episodeFromElement(element: Element): SEpisode = throw Exception("not used")
+    override fun episodeFromElement(element: Element): SEpisode = throw UnsupportedOperationException()
 
-    override fun episodeListSelector(): String = throw Exception("not used")
+    override fun episodeListSelector(): String = throw UnsupportedOperationException()
 
-    override fun latestUpdatesFromElement(element: Element): SAnime = throw Exception("not used")
+    override fun latestUpdatesFromElement(element: Element): SAnime = throw UnsupportedOperationException()
 
-    override fun latestUpdatesNextPageSelector(): String = throw Exception("not used")
+    override fun latestUpdatesNextPageSelector(): String = throw UnsupportedOperationException()
 
-    override fun latestUpdatesSelector(): String = throw Exception("not used")
+    override fun latestUpdatesSelector(): String = throw UnsupportedOperationException()
 }

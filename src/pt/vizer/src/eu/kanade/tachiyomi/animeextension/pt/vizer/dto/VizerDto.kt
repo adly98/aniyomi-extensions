@@ -1,25 +1,28 @@
 package eu.kanade.tachiyomi.animeextension.pt.vizer.dto
 
+import eu.kanade.tachiyomi.util.parseAs
 import kotlinx.serialization.EncodeDefault
-import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.JsonTransformingSerializer
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.jsonPrimitive
+
+typealias FakeList<T> = Map<String, T>
 
 @Serializable
-data class SearchResultDto(
+class SearchResultDto(
     val quantity: Int = 0,
-    @Serializable(with = GenericListSerializer::class)
     @EncodeDefault
-    val list: List<SearchItemDto> = emptyList(),
+    @SerialName("list")
+    val items: FakeList<SearchItemDto> = emptyMap(),
 )
 
 @Serializable
-data class SearchItemDto(
+class SearchItemDto(
     val id: String,
     val title: String,
     val url: String,
@@ -28,51 +31,62 @@ data class SearchItemDto(
 )
 
 @Serializable
-data class EpisodeListDto(
-    @Serializable(with = GenericListSerializer::class)
+class EpisodeListDto(
     @SerialName("list")
-    val episodes: List<EpisodeItemDto>,
+    val episodes: FakeList<EpisodeItemDto>,
 )
 
 @Serializable
-data class EpisodeItemDto(
+class EpisodeItemDto(
     val id: String,
     val name: String,
+    @Serializable(with = BooleanSerializer::class)
     val released: Boolean,
     val title: String,
 )
 
 @Serializable
-data class VideoLanguagesDto(
+class VideoListDto(
     @SerialName("list")
-    @Serializable(with = GenericListSerializer::class)
-    val videos: List<VideoDto>,
+    val videos: FakeList<VideoDto>,
 )
 
 @Serializable
-data class VideoDto(
+class VideoDto(
     val id: String,
     val lang: String,
-)
+    @SerialName("players")
+    private val players: String? = null,
+) {
+    var hosters = try {
+        players?.parseAs<HostersDto>()
+    } catch (e: Throwable) {
+        null
+    }
+}
 
 @Serializable
-data class PlayersDto(
-    val mixdrop: String = "0",
-    val streamtape: String = "0",
+class HostersDto(
+    val mixdrop: Int = 0,
+    val streamtape: Int = 0,
+    val warezcdn: Int = 0,
 ) {
-    operator fun iterator(): List<Pair<String, String>> {
+    operator fun iterator(): List<Pair<String, Int>> {
         return listOf(
             "mixdrop" to mixdrop,
             "streamtape" to streamtape,
+            "warezcdn" to warezcdn,
         )
     }
 }
 
-class GenericListSerializer<T>(
-    private val itemSerializer: KSerializer<T>,
-) : JsonTransformingSerializer<List<T>>(ListSerializer(itemSerializer)) {
+object BooleanSerializer : JsonTransformingSerializer<Boolean>(Boolean.serializer()) {
     override fun transformDeserialize(element: JsonElement): JsonElement {
-        val jsonObj = element as JsonObject
-        return JsonArray(jsonObj.values.toList())
+        require(element is JsonPrimitive)
+        return if (element.jsonPrimitive.isString) {
+            JsonPrimitive(true)
+        } else {
+            JsonPrimitive(element.jsonPrimitive.booleanOrNull ?: false)
+        }
     }
 }

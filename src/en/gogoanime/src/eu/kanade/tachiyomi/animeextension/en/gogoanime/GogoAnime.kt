@@ -1,12 +1,9 @@
 package eu.kanade.tachiyomi.animeextension.en.gogoanime
 
 import android.app.Application
-import android.widget.Toast
-import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
 import androidx.preference.MultiSelectListPreference
 import androidx.preference.PreferenceScreen
-import eu.kanade.tachiyomi.animeextension.BuildConfig
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.SAnime
@@ -19,32 +16,25 @@ import eu.kanade.tachiyomi.lib.mp4uploadextractor.Mp4uploadExtractor
 import eu.kanade.tachiyomi.lib.streamwishextractor.StreamWishExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.runBlocking
+import eu.kanade.tachiyomi.util.parallelCatchingFlatMapBlocking
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.lang.Exception
 
 class GogoAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val name = "Gogoanime"
 
-    override val baseUrl by lazy {
-        preferences.getString(PREF_DOMAIN_KEY, PREF_DOMAIN_DEFAULT).orEmpty()
-            .trim().ifBlank { PREF_DOMAIN_DEFAULT }
-    }
+    // TODO: Check frequency of url changes to potentially
+    // add back overridable baseurl preference
+    override val baseUrl = "https://anitaku.to"
 
     override val lang = "en"
 
     override val supportsLatest = true
-
-    override val client = network.cloudflareClient
 
     override fun headersBuilder() = super.headersBuilder()
         .add("Origin", baseUrl)
@@ -116,7 +106,8 @@ class GogoAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             status = parseStatus(infoDocument.getInfo("Status:").orEmpty())
 
             description = buildString {
-                infoDocument.getInfo("Plot Summary:")?.also(::append)
+                val summary = infoDocument.selectFirst("div.anime_info_body_bg > div.description")
+                append(summary?.text())
 
                 // add alternative name to anime description
                 infoDocument.getInfo("Other name:")?.also {
@@ -163,12 +154,12 @@ class GogoAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val document = response.asJsoup()
         val hosterSelection = preferences.getStringSet(PREF_HOSTER_KEY, PREF_HOSTER_DEFAULT)!!
 
-        return document.select("div.anime_muti_link > ul > li").parallelCatchingFlatMap { server ->
+        return document.select("div.anime_muti_link > ul > li").parallelCatchingFlatMapBlocking { server ->
             val className = server.className()
-            if (!hosterSelection.contains(className)) return@parallelCatchingFlatMap emptyList()
+            if (!hosterSelection.contains(className)) return@parallelCatchingFlatMapBlocking emptyList()
             val serverUrl = server.selectFirst("a")
                 ?.attr("abs:data-video")
-                ?: return@parallelCatchingFlatMap emptyList()
+                ?: return@parallelCatchingFlatMapBlocking emptyList()
 
             getHosterVideos(className, serverUrl)
         }
@@ -187,11 +178,11 @@ class GogoAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }
     }
 
-    override fun videoListSelector() = throw Exception("not used")
+    override fun videoListSelector() = throw UnsupportedOperationException()
 
-    override fun videoFromElement(element: Element) = throw Exception("not used")
+    override fun videoFromElement(element: Element) = throw UnsupportedOperationException()
 
-    override fun videoUrlParse(document: Document) = throw Exception("not used")
+    override fun videoUrlParse(document: Document) = throw UnsupportedOperationException()
 
     // ============================= Utilities ==============================
     private fun Document.getInfo(text: String): String? {
@@ -222,17 +213,8 @@ class GogoAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }
     }
 
-    private inline fun <A, B> Iterable<A>.parallelCatchingFlatMap(crossinline f: suspend (A) -> Iterable<B>): List<B> =
-        runBlocking {
-            map {
-                async(Dispatchers.Default) {
-                    runCatching { f(it) }.getOrElse { emptyList() }
-                }
-            }.awaitAll().flatten()
-        }
-
     companion object {
-        private const val AJAX_URL = "https://ajax.gogo-load.com/ajax"
+        private const val AJAX_URL = "https://ajax.gogocdn.net/ajax"
 
         private val HOSTERS = arrayOf(
             "Gogostream",
@@ -242,7 +224,8 @@ class GogoAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             "Mp4upload",
             "FileLions",
         )
-        private val HOSTERS_NAMES = arrayOf( // Names that appears in the gogo html
+        private val HOSTERS_NAMES = arrayOf(
+            // Names that appears in the gogo html
             "vidcdn",
             "anime",
             "doodstream",
@@ -250,12 +233,6 @@ class GogoAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             "mp4upload",
             "filelions",
         )
-
-        private const val PREF_DOMAIN_KEY = "preferred_domain_name_v${BuildConfig.VERSION_CODE}"
-        private const val PREF_DOMAIN_TITLE = "Override BaseUrl"
-        private const val PREF_DOMAIN_DEFAULT = "https://anitaku.to"
-        private const val PREF_DOMAIN_SUMMARY = "For temporary uses. Updating the extension will erase this setting."
-        private const val PREF_DOMAIN_DIALOG_MESSAGE = "Default: $PREF_DOMAIN_DEFAULT"
 
         private const val PREF_QUALITY_KEY = "preferred_quality"
         private const val PREF_QUALITY_TITLE = "Preferred quality"
@@ -274,23 +251,6 @@ class GogoAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     // ============================== Settings ==============================
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
-        EditTextPreference(screen.context).apply {
-            key = PREF_DOMAIN_KEY
-            title = PREF_DOMAIN_TITLE
-            dialogTitle = PREF_DOMAIN_TITLE
-            dialogMessage = PREF_DOMAIN_DIALOG_MESSAGE
-            setDefaultValue(PREF_DOMAIN_DEFAULT)
-            summary = PREF_DOMAIN_SUMMARY
-
-            setOnPreferenceChangeListener { _, newValue ->
-                runCatching {
-                    val value = (newValue as String).trim().ifBlank { PREF_DOMAIN_DEFAULT }
-                    Toast.makeText(screen.context, "Restart Aniyomi to apply new setting.", Toast.LENGTH_LONG).show()
-                    preferences.edit().putString(key, value).commit()
-                }.getOrDefault(false)
-            }
-        }.also(screen::addPreference)
-
         ListPreference(screen.context).apply {
             key = PREF_QUALITY_KEY
             title = PREF_QUALITY_TITLE

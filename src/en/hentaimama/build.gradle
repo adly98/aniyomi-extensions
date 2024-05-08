@@ -1,13 +1,8 @@
-apply plugin: 'com.android.application'
-apply plugin: 'kotlin-android'
-
 ext {
     extName = 'HentaiMama'
-    pkgNameSuffix = 'en.hentaimama'
     extClass = '.HentaiMama'
     extVersionCode = 7
-    libVersion = '13'
-    containsNsfw = true
+    isNsfw = true
 }
 
 apply from: "$rootDir/common.gradle"

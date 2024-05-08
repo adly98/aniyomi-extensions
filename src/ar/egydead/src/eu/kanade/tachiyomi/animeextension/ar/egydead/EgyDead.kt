@@ -2,11 +2,8 @@ package eu.kanade.tachiyomi.animeextension.ar.egydead
 
 import android.app.Application
 import android.content.SharedPreferences
-import android.widget.Toast
-import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
-import dev.datlag.jsunpacker.JsUnpacker
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilter
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
@@ -16,36 +13,31 @@ import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.lib.doodextractor.DoodExtractor
 import eu.kanade.tachiyomi.lib.mixdropextractor.MixDropExtractor
+import eu.kanade.tachiyomi.lib.streamwishextractor.StreamWishExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
+import eu.kanade.tachiyomi.network.await
 import eu.kanade.tachiyomi.util.asJsoup
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.runBlocking
+import eu.kanade.tachiyomi.util.parallelCatchingFlatMap
 import okhttp3.FormBody
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.lang.Exception
 
 class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val name = "Egy Dead"
 
-    override val baseUrl by lazy {
-        getPrefHostUrl(preferences)
-    }
+    // TODO: Check frequency of url changes to potentially
+    // add back overridable baseurl preference
+    override val baseUrl = "https://egydead.space"
 
     override val lang = "ar"
 
     override val supportsLatest = true
-
-    override val client: OkHttpClient = network.cloudflareClient
 
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
@@ -129,25 +121,26 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     // ================================== video urls ==================================
-    override fun videoListParse(response: Response): List<Video> {
+    private val streamWishExtractor by lazy { StreamWishExtractor(client, headers) }
+
+    override suspend fun getVideoList(episode: SEpisode): List<Video> {
         val requestBody = FormBody.Builder().add("View", "1").build()
-        val document = client.newCall(POST(response.request.url.toString(), body = requestBody)).execute().asJsoup()
-        return document.select(videoListSelector()).parallelMap {
+
+        val document = client.newCall(POST(baseUrl + episode.url, body = requestBody))
+            .await()
+            .asJsoup()
+        return document.select(videoListSelector()).parallelCatchingFlatMap {
             val url = it.attr("data-link")
-            runCatching { extractVideos(url) }.getOrElse { emptyList() }
-        }.flatten()
+            extractVideos(url)
+        }
     }
 
-    private inline fun <A, B> Iterable<A>.parallelMap(crossinline f: suspend (A) -> B): List<B> =
-        runBlocking {
-            map { async(Dispatchers.Default) { f(it) } }.awaitAll()
-        }
     private fun extractVideos(url: String): List<Video> {
         return when {
             DOOD_REGEX.containsMatchIn(url) -> {
                 DoodExtractor(client).videoFromUrl(url, "Dood mirror")?.let(::listOf)
             }
-            url.contains("mixdrop") -> {
+            url.contains("mdbekjwqa") -> {
                 MixDropExtractor(client).videoFromUrl(url)
             }
             url.contains("ahvsh") -> {
@@ -158,24 +151,7 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 Video(streamLink, "StreamHide: $quality", streamLink).let(::listOf)
             }
             STREAMWISH_REGEX.containsMatchIn(url) -> {
-                val request = client.newCall(GET(url, headers)).execute().asJsoup()
-                val data = JsUnpacker.unpackAndCombine(request.selectFirst("script:containsData(sources)")!!.data())!!
-                val m3u8 = SOURCE_URL_REGEX.find(data)!!.groupValues[1]
-                if (QUALITIES_REGEX.containsMatchIn(m3u8)) {
-                    val streamLink = QUALITIES_REGEX.find(m3u8)!!
-                    val streamQuality = streamLink.groupValues[2].split(",").reversed()
-                    val qualities = data.substringAfter("qualityLabels").substringBefore("}")
-                    val qRegex = Regex("\".*?\":\\s*\"(.*?)\"").findAll(qualities)
-                    qRegex.mapIndexed { index, matchResult ->
-                        val src = streamLink.groupValues[1] + "_" + streamQuality[index] + "/index-v1-a1" + streamLink.groupValues[3]
-                        val quality = "StreamWish: " + matchResult.groupValues[1]
-                        Video(src, quality, src, headers)
-                    }.toList()
-                } else {
-                    val qualities = data.substringAfter("qualityLabels").substringBefore("}")
-                    val qRegex = Regex("\".*?\"\\s*:\\s*\"(.*?)\"").find(qualities)!!
-                    Video(m3u8, qRegex.groupValues[1], m3u8).let(::listOf)
-                }
+                streamWishExtractor.videosFromUrl(url)
             }
             url.contains("fanakishtuna") -> {
                 val request = client.newCall(GET(url, headers)).execute().asJsoup()
@@ -197,7 +173,7 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun videoListSelector() = "ul.serversList li"
 
-    override fun videoFromElement(element: Element) = throw Exception("not used")
+    override fun videoFromElement(element: Element) = throw UnsupportedOperationException()
 
     override fun List<Video>.sort(): List<Video> {
         val quality = preferences.getString("preferred_quality", "1080p")
@@ -217,7 +193,7 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return this
     }
 
-    override fun videoUrlParse(document: Document) = throw Exception("not used")
+    override fun videoUrlParse(document: Document) = throw UnsupportedOperationException()
 
     // ================================== search ==================================
 
@@ -317,32 +293,7 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     // ================================== preferences ==================================
 
-    private fun getPrefHostUrl(preferences: SharedPreferences): String = preferences.getString(
-        "default_domain",
-        "https://w9.egydead.live/",
-    )!!.trim()
-
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
-        val defaultDomain = EditTextPreference(screen.context).apply {
-            key = "default_domain"
-            title = "Override default domain with a different one"
-            summary = getPrefHostUrl(preferences)
-            this.setDefaultValue(getPrefHostUrl(preferences))
-            dialogTitle = "Enter default domain"
-            dialogMessage = "You can change the site domain from here"
-
-            setOnPreferenceChangeListener { _, newValue ->
-                try {
-                    val res = preferences.edit().putString("default_domain", newValue as String).commit()
-                    Toast.makeText(screen.context, "Restart Aniyomi to apply changes", Toast.LENGTH_LONG).show()
-                    res
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    false
-                }
-            }
-        }
-
         val videoQualityPref = ListPreference(screen.context).apply {
             key = "preferred_quality"
             title = "Preferred quality"
@@ -358,15 +309,12 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 preferences.edit().putString(key, entry).commit()
             }
         }
-        screen.addPreference(defaultDomain)
         screen.addPreference(videoQualityPref)
     }
 
     // like|kharabnahk
     companion object {
-        private val DOOD_REGEX = Regex("(do*d(?:stream)?\\.(?:com?|watch|to|s[ho]|cx|la|w[sf]|pm|re|yt|stream))/[de]/([0-9a-zA-Z]+)")
-        private val STREAMWISH_REGEX = Regex("ajmidyad|alhayabambi|atabknh[ks]|file")
-        private val SOURCE_URL_REGEX = Regex("sources:\\s*\\[\\{\\s*\\t*file:\\s*[\"']([^\"']+)")
-        private val QUALITIES_REGEX = Regex("(.*)_,(.*),\\.urlset/master(.*)")
+        private val DOOD_REGEX = Regex("(do*d(?:stream)?\\.(?:com?|watch|to|s[ho]|cx|la|w[sf]|pm|re|yt|stream))/[de]/([0-9a-zA-Z]+)|ds2play")
+        private val STREAMWISH_REGEX = Regex("ajmidyad|alhayabambi|atabknh[ks]|https://.*\\.sbs/e/")
     }
 }

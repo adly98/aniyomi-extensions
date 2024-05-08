@@ -2,10 +2,6 @@ package eu.kanade.tachiyomi.animeextension.de.aniworld
 
 import android.app.Application
 import android.content.SharedPreferences
-import android.text.InputType
-import android.util.Log
-import android.widget.Toast
-import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
 import androidx.preference.MultiSelectListPreference
 import androidx.preference.PreferenceScreen
@@ -30,7 +26,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.FormBody
 import okhttp3.Headers
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
@@ -41,14 +36,13 @@ import uy.kohesive.injekt.injectLazy
 
 class AniWorld : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
-    override val name = "AniWorld (experimental)"
+    override val name = "AniWorld"
 
     override val baseUrl = "https://aniworld.to"
 
-    private val baseLogin by lazy { AWConstants.getPrefBaseLogin(preferences) }
-    private val basePassword by lazy { AWConstants.getPrefBasePassword(preferences) }
-
     override val lang = "de"
+
+    override val id: Long = 8286900189409315836
 
     override val supportsLatest = true
 
@@ -56,17 +50,11 @@ class AniWorld : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
     }
 
-    override val client: OkHttpClient = network.client.newBuilder()
+    override val client = network.client.newBuilder()
         .addInterceptor(DdosGuardInterceptor(network.client))
         .build()
 
-    private val authClient = network.client.newBuilder()
-        .addInterceptor(AniWorldInterceptor(client, preferences))
-        .build()
-
     private val json: Json by injectLazy()
-
-    val context = Injekt.get<Application>()
 
     // ===== POPULAR ANIME =====
     override fun popularAnimeSelector(): String = "div.seriesListContainer div"
@@ -78,7 +66,6 @@ class AniWorld : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     override fun popularAnimeFromElement(element: Element): SAnime {
-        context
         val anime = SAnime.create()
         val linkElement = element.selectFirst("a")!!
         anime.url = linkElement.attr("href")
@@ -120,9 +107,9 @@ class AniWorld : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             .build()
         return POST("$baseUrl/ajax/search", body = FormBody.Builder().add("keyword", query).build(), headers = headers)
     }
-    override fun searchAnimeSelector() = throw UnsupportedOperationException("Not used.")
+    override fun searchAnimeSelector() = throw UnsupportedOperationException()
 
-    override fun searchAnimeNextPageSelector() = throw UnsupportedOperationException("Not used.")
+    override fun searchAnimeNextPageSelector() = throw UnsupportedOperationException()
 
     override fun searchAnimeParse(response: Response): AnimesPage {
         val body = response.body.string()
@@ -149,7 +136,7 @@ class AniWorld : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return anime
     }
 
-    override fun searchAnimeFromElement(element: Element) = throw UnsupportedOperationException("Not used.")
+    override fun searchAnimeFromElement(element: Element) = throw UnsupportedOperationException()
 
     // ===== ANIME DETAILS =====
     override fun animeDetailsParse(document: Document): SAnime {
@@ -168,7 +155,7 @@ class AniWorld : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     // ===== EPISODE =====
-    override fun episodeListSelector() = throw UnsupportedOperationException("Not used.")
+    override fun episodeListSelector() = throw UnsupportedOperationException()
 
     override fun episodeListParse(response: Response): List<SEpisode> {
         val document = response.asJsoup()
@@ -190,14 +177,14 @@ class AniWorld : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     private fun parseEpisodesFromSeries(element: Element): List<SEpisode> {
         val seasonId = element.attr("abs:href")
-        val episodesHtml = authClient.newCall(GET(seasonId)).execute().asJsoup()
+        val episodesHtml = client.newCall(GET(seasonId)).execute().asJsoup()
         val episodeElements = episodesHtml.select("table.seasonEpisodesList tbody tr")
         return episodeElements.map { episodeFromElement(it) }
     }
 
     private fun parseMoviesFromSeries(element: Element): List<SEpisode> {
         val seasonId = element.attr("abs:href")
-        val episodesHtml = authClient.newCall(GET(seasonId)).execute().asJsoup()
+        val episodesHtml = client.newCall(GET(seasonId)).execute().asJsoup()
         val episodeElements = episodesHtml.select("table.seasonEpisodesList tbody tr")
         return episodeElements.map { episodeFromElement(it) }
     }
@@ -221,15 +208,13 @@ class AniWorld : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     // ===== VIDEO SOURCES =====
-    override fun videoListSelector() = throw UnsupportedOperationException("Not used.")
+    override fun videoListSelector() = throw UnsupportedOperationException()
 
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
         val redirectlink = document.select("ul.row li")
         val videoList = mutableListOf<Video>()
         val hosterSelection = preferences.getStringSet(AWConstants.HOSTER_SELECTION, null)
-        val redirectInterceptor = client.newBuilder().addInterceptor(RedirectInterceptor()).build()
-        val jsInterceptor = client.newBuilder().addInterceptor(JsInterceptor()).build()
         redirectlink.forEach {
             val langkey = it.attr("data-lang-key")
             val language = getlanguage(langkey)
@@ -238,23 +223,13 @@ class AniWorld : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             if (hosterSelection != null) {
                 when {
                     hoster.contains("VOE") && hosterSelection.contains(AWConstants.NAME_VOE) -> {
-                        val quality = "Voe $language"
-                        var url = redirectInterceptor.newCall(GET(redirectgs)).execute().request.url.toString()
-                        if (url.contains("payload") || url.contains(redirectgs)) {
-                            url = recapbypass(jsInterceptor, redirectgs)
-                        }
-                        val video = VoeExtractor(client).videoFromUrl(url, quality)
-                        if (video != null) {
-                            videoList.add(video)
-                        }
+                        val url = client.newCall(GET(redirectgs)).execute().request.url.toString()
+                        videoList.addAll(VoeExtractor(client).videosFromUrl(url, "($language) "))
                     }
 
                     hoster.contains("Doodstream") && hosterSelection.contains(AWConstants.NAME_DOOD) -> {
                         val quality = "Doodstream $language"
-                        var url = redirectInterceptor.newCall(GET(redirectgs)).execute().request.url.toString()
-                        if (url.contains("payload") || url.contains(redirectgs)) {
-                            url = recapbypass(jsInterceptor, redirectgs)
-                        }
+                        val url = client.newCall(GET(redirectgs)).execute().request.url.toString()
                         val video = DoodExtractor(client).videoFromUrl(url, quality)
                         if (video != null) {
                             videoList.add(video)
@@ -263,10 +238,7 @@ class AniWorld : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
                     hoster.contains("Streamtape") && hosterSelection.contains(AWConstants.NAME_STAPE) -> {
                         val quality = "Streamtape $language"
-                        var url = redirectInterceptor.newCall(GET(redirectgs)).execute().request.url.toString()
-                        if (url.contains("payload") || url.contains(redirectgs)) {
-                            url = recapbypass(jsInterceptor, redirectgs)
-                        }
+                        val url = client.newCall(GET(redirectgs)).execute().request.url.toString()
                         val video = StreamTapeExtractor(client).videoFromUrl(url, quality)
                         if (video != null) {
                             videoList.add(video)
@@ -274,10 +246,7 @@ class AniWorld : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     }
                     hoster.contains("Vidoza") && hosterSelection.contains(AWConstants.NAME_VIZ) -> {
                         val quality = "Vidoza $language"
-                        var url = redirectInterceptor.newCall(GET(redirectgs)).execute().request.url.toString()
-                        if (url.contains("payload") || url.contains(redirectgs)) {
-                            url = recapbypass(jsInterceptor, redirectgs)
-                        }
+                        val url = client.newCall(GET(redirectgs)).execute().request.url.toString()
                         val video = VidozaExtractor(client).videoFromUrl(url, quality)
                         if (video != null) {
                             videoList.add(video)
@@ -287,12 +256,6 @@ class AniWorld : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             }
         }
         return videoList
-    }
-
-    private fun recapbypass(jsInterceptor: OkHttpClient, redirectgs: String): String {
-        val token = jsInterceptor.newCall(GET(redirectgs)).execute().request.header("url").toString()
-        val url = client.newCall(GET("$redirectgs?token=$token&original=")).execute().request.url.toString()
-        return url
     }
 
     private fun getlanguage(langkey: String): String? {
@@ -312,7 +275,7 @@ class AniWorld : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }
     }
 
-    override fun videoFromElement(element: Element): Video = throw Exception("not Used")
+    override fun videoFromElement(element: Element): Video = throw UnsupportedOperationException()
 
     override fun List<Video>.sort(): List<Video> {
         val hoster = preferences.getString(AWConstants.PREFERRED_HOSTER, null)
@@ -352,7 +315,7 @@ class AniWorld : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return newList
     }
 
-    override fun videoUrlParse(document: Document): String = throw UnsupportedOperationException("Not used.")
+    override fun videoUrlParse(document: Document): String = throw UnsupportedOperationException()
 
     // ===== PREFERENCES ======
     @Suppress("UNCHECKED_CAST")
@@ -398,37 +361,8 @@ class AniWorld : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 preferences.edit().putStringSet(key, newValue as Set<String>).commit()
             }
         }
-        screen.addPreference(screen.editTextPreference(AWConstants.LOGIN_TITLE, AWConstants.LOGIN_DEFAULT, baseLogin, false, ""))
-        screen.addPreference(screen.editTextPreference(AWConstants.PASSWORD_TITLE, AWConstants.PASSWORD_DEFAULT, basePassword, true, ""))
         screen.addPreference(subPref)
         screen.addPreference(hosterPref)
         screen.addPreference(hosterSelection)
-    }
-
-    private fun PreferenceScreen.editTextPreference(title: String, default: String, value: String, isPassword: Boolean = false, placeholder: String): EditTextPreference {
-        return EditTextPreference(context).apply {
-            key = title
-            this.title = title
-            summary = value.ifEmpty { placeholder }
-            this.setDefaultValue(default)
-            dialogTitle = title
-
-            if (isPassword) {
-                setOnBindEditTextListener {
-                    it.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-                }
-            }
-
-            setOnPreferenceChangeListener { _, newValue ->
-                try {
-                    val res = preferences.edit().putString(title, newValue as String).commit()
-                    Toast.makeText(context, "Starte Aniyomi neu, um die Einstellungen zu übernehmen.", Toast.LENGTH_LONG).show()
-                    res
-                } catch (e: Exception) {
-                    Log.e("Anicloud", "Fehler beim festlegen der Einstellung.", e)
-                    false
-                }
-            }
-        }
     }
 }

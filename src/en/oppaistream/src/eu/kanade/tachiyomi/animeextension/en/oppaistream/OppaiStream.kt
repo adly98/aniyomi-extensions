@@ -18,7 +18,7 @@ import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.util.asJsoup
-import kotlinx.serialization.decodeFromString
+import eu.kanade.tachiyomi.util.parseAs
 import kotlinx.serialization.json.Json
 import okhttp3.FormBody
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -39,8 +39,6 @@ class OppaiStream : ParsedAnimeHttpSource(), ConfigurableAnimeSource {
     override val baseUrl = "https://oppai.stream"
 
     override val supportsLatest = true
-
-    override val client = network.cloudflareClient
 
     override fun headersBuilder() = super.headersBuilder().add("Referer", baseUrl)
 
@@ -113,7 +111,7 @@ class OppaiStream : ParsedAnimeHttpSource(), ConfigurableAnimeSource {
     override fun searchAnimeNextPageSelector() = null
 
     override fun searchAnimeParse(response: Response): AnimesPage {
-        val document = response.use { it.asJsoup() }
+        val document = response.asJsoup()
         val elements = document.select(searchAnimeSelector())
 
         val anime = elements.map(::searchAnimeFromElement).distinctBy { it.title }
@@ -126,7 +124,11 @@ class OppaiStream : ParsedAnimeHttpSource(), ConfigurableAnimeSource {
     override fun searchAnimeFromElement(element: Element) = SAnime.create().apply {
         thumbnail_url = element.selectFirst("img.cover-img-in")?.attr("abs:src")
         title = element.selectFirst(".title-ep")!!.text().replace(TITLE_CLEANUP_REGEX, "")
-        setUrlWithoutDomain(element.attr("href"))
+        setUrlWithoutDomain(
+            element.attr("href").replace(Regex("(?<=\\?e=)(.*?)(?=&f=)")) {
+                java.net.URLEncoder.encode(it.groupValues[1], "UTF-8")
+            },
+        )
     }
 
     // =========================== Anime Details ============================
@@ -156,7 +158,7 @@ class OppaiStream : ParsedAnimeHttpSource(), ConfigurableAnimeSource {
 
     // ============================== Episodes ==============================
     override fun episodeListParse(response: Response): List<SEpisode> {
-        val doc = response.use { it.asJsoup() }
+        val doc = response.asJsoup()
         return buildList {
             doc.select(episodeListSelector())
                 .map(::episodeFromElement)
@@ -164,7 +166,11 @@ class OppaiStream : ParsedAnimeHttpSource(), ConfigurableAnimeSource {
 
             add(
                 SEpisode.create().apply {
-                    setUrlWithoutDomain(doc.location())
+                    setUrlWithoutDomain(
+                        doc.location().replace(Regex("(?<=\\?e=)(.*?)(?=&f=)")) {
+                            java.net.URLEncoder.encode(it.groupValues[1], "UTF-8")
+                        },
+                    )
                     val num = doc.selectFirst("div.episode-info > h1")!!.text().substringAfter(" Ep ")
                     name = "Episode $num"
                     episode_number = num.toFloatOrNull() ?: 1F
@@ -177,7 +183,11 @@ class OppaiStream : ParsedAnimeHttpSource(), ConfigurableAnimeSource {
     override fun episodeListSelector() = "div.more-same-eps > div > div > a"
 
     override fun episodeFromElement(element: Element) = SEpisode.create().apply {
-        setUrlWithoutDomain(element.attr("href"))
+        setUrlWithoutDomain(
+            element.attr("href").replace(Regex("(?<=\\?e=)(.*?)(?=&f=)")) {
+                java.net.URLEncoder.encode(it.groupValues[1], "UTF-8")
+            },
+        )
         val num = element.selectFirst("font.ep")?.text() ?: "1"
         name = "Episode $num"
         episode_number = num.toFloatOrNull() ?: 1F
@@ -186,7 +196,7 @@ class OppaiStream : ParsedAnimeHttpSource(), ConfigurableAnimeSource {
 
     // ============================ Video Links =============================
     override fun videoListParse(response: Response): List<Video> {
-        val doc = response.use { it.asJsoup() }
+        val doc = response.asJsoup()
         val script = doc.selectFirst("script:containsData(var availableres)")!!.data()
         val subtitles = doc.select("track[kind=captions]").map {
             Track(it.attr("src"), it.attr("label"))
@@ -204,9 +214,9 @@ class OppaiStream : ParsedAnimeHttpSource(), ConfigurableAnimeSource {
             }
     }
 
-    override fun videoListSelector() = throw Exception("Not used")
+    override fun videoListSelector() = throw UnsupportedOperationException()
 
-    override fun videoFromElement(element: Element) = throw Exception("Not used")
+    override fun videoFromElement(element: Element) = throw UnsupportedOperationException()
 
     override fun List<Video>.sort(): List<Video> {
         val quality = preferences.getString(PREF_QUALITY_KEY, PREF_QUALITY_DEFAULT)!!
@@ -217,7 +227,7 @@ class OppaiStream : ParsedAnimeHttpSource(), ConfigurableAnimeSource {
     }
 
     override fun videoUrlParse(document: Document): String {
-        throw UnsupportedOperationException("Not used")
+        throw UnsupportedOperationException()
     }
 
     // ============================== Settings ==============================
@@ -268,9 +278,6 @@ class OppaiStream : ParsedAnimeHttpSource(), ConfigurableAnimeSource {
     }
 
     // ============================= Utilities ==============================
-    private inline fun <reified T> Response.parseAs(): T {
-        return use { it.body.string() }.let(json::decodeFromString)
-    }
 
     // Function to fetch thumbnail URL using AniList GraphQL API
     // Only use in animeDetailsParse.

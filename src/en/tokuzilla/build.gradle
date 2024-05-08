@@ -1,19 +1,11 @@
-plugins {
-    alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
-}
-
 ext {
     extName = 'Tokuzilla'
-    pkgNameSuffix = 'en.tokuzilla'
     extClass = '.Tokuzilla'
-    extVersionCode = 14
-    libVersion = '13'
-    containsNsfw = false
-}
-
-dependencies {
-    implementation(project(':lib-chillx-extractor'))
+    extVersionCode = 15
 }
 
 apply from: "$rootDir/common.gradle"
+
+dependencies {
+    implementation(project(':lib:chillx-extractor'))
+}
