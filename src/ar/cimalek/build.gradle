@@ -1,0 +1,7 @@
+ext {
+    extName = 'Cimalek'
+    extClass = '.Cimalek'
+    extVersionCode = 1
+}
+
+apply from: "$rootDir/common.gradle"
