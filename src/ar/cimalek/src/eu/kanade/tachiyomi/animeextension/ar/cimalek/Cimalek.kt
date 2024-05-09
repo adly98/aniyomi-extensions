@@ -13,7 +13,7 @@ import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
-import eu.kanade.tachiyomi.util.parallelCatchingFlatMap
+import eu.kanade.tachiyomi.util.parallelCatchingFlatMapBlocking
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 import okhttp3.Response
@@ -56,7 +56,7 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         TODO("Not yet implemented")
     }
 
-    override suspend fun episodeListParse(response: Response): List<SEpisode> {
+    override fun episodeListParse(response: Response): List<SEpisode> {
         val episodes = mutableListOf<SEpisode>()
 
         val document = res.asJsoup()
@@ -68,7 +68,7 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             }
             episodes.add(episode)
         } else {
-            document.select(seasonListSelector()).parallelCatchingFlatMap { sElement ->
+            document.select(seasonListSelector()).parallelCatchingFlatMapBlocking { sElement ->
                 val seasonNum = sElement.select("span.se-a").text()
                 val seasonUrl = sElement.attr("href")
                 var seasonPage = client.newCall(GET(seasonUrl)).execute().asJsoup()
