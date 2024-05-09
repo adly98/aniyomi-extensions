@@ -56,46 +56,36 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         TODO("Not yet implemented")
     }
 
-    override fun episodeListParse(response: Response): List<SEpisode> {
+    override suspend fun episodeListParse(response: Response): List<SEpisode> {
         val episodes = mutableListOf<SEpisode>()
 
-        fun episodeExtract(element: Element): SEpisode {
-            val episode = SEpisode.create()
-            episode.setUrlWithoutDomain(element.attr("href"))
-            episode.name = element.attr("title")
-            return episode
-        }
-        fun addEpisodes(res: Response) {
-            val document = res.asJsoup()
-            val url = res.request.url.toString()
-            if (url.contains("movies")) {
-                val episode = SEpisode.create().apply {
-                    name = "مشاهدة"
-                    setUrlWithoutDomain("$url/watch/")
-                }
-                episodes.add(episode)
-            } else {
-                document.select(seasonListSelector()).parallelCatchingFlatMap { sElement ->
-                    val seasonNum = sElement.select("span.se-a").text()
-                    val seasonUrl = sElement.attr("href")
-                    var seasonPage = client.newCall(GET(seasonUrl)).execute().asJsoup()
-                    seasonPage.select(episodeListSelector()).map { eElement ->
-                        val episodeNum = eElement.select("span.serie").text().substringAfter("(").substringBefore(")")
-                        val episodeUrl = eElement.attr("href")
-                        val finalNum = (seasonNum + "." + episodeNum).toFloat()
-                        val episodeTitle = "الموسم $seasonNumber الحلقة $episodeNum"
-                        val episode = SEpisode.create().apply {
-                            name = episodeTitle
-                            episode_number = finalNum
-                            setUrlWithoutDomain("$episodeUrl/watch/")
-                        }
-                        episodes.add(episode)
+        val document = res.asJsoup()
+        val url = res.request.url.toString()
+        if (url.contains("movies")) {
+            val episode = SEpisode.create().apply {
+                name = "مشاهدة"
+                setUrlWithoutDomain("$url/watch/")
+            }
+            episodes.add(episode)
+        } else {
+            document.select(seasonListSelector()).parallelCatchingFlatMap { sElement ->
+                val seasonNum = sElement.select("span.se-a").text()
+                val seasonUrl = sElement.attr("href")
+                var seasonPage = client.newCall(GET(seasonUrl)).execute().asJsoup()
+                seasonPage.select(episodeListSelector()).map { eElement ->
+                    val episodeNum = eElement.select("span.serie").text().substringAfter("(").substringBefore(")")
+                    val episodeUrl = eElement.attr("href")
+                    val finalNum = (seasonNum + "." + episodeNum).toFloat()
+                    val episodeTitle = "الموسم $seasonNum الحلقة $episodeNum"
+                    val episode = SEpisode.create().apply {
+                        name = episodeTitle
+                        episode_number = finalNum
+                        setUrlWithoutDomain("$episodeUrl/watch/")
                     }
+                    episodes.add(episode)
                 }
             }
-            // document.select(episodeListSelector()).map { episodes.add(episodeFromElement(it)) }
         }
-        addEpisodes(response)
         return episodes
     }
 
@@ -154,7 +144,7 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             url.addPathSegment("page")
             url.addPathSegment("$page")
             if (categoryFilter.state != 0) {
-                url.addQueryParameter("type", categoryFilter)
+                url.addQueryParameter("type", categoryFilter.toUriPart())
             }
             GET(url.toString(), headers)
         }
