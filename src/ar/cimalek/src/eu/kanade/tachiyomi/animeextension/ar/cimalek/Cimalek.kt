@@ -138,6 +138,7 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             listOf(Video(test, test, test))
         }
     }
+
     // =============================== Search ===============================
     override fun searchAnimeFromElement(element: Element): SAnime = popularAnimeFromElement(element)
 
