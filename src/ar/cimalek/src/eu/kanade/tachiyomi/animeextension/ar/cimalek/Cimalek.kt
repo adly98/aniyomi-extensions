@@ -114,7 +114,7 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             val characters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
             val result = StringBuilder(length)
             for (i in 0 until length) {
-              val randomIndex = (Math.random() * characters.length).toInt()
+                val randomIndex = (Math.random() * characters.length).toInt()
                 result.append(characters[randomIndex])
             }
             return result.toString()
@@ -124,49 +124,21 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val dataRegex = Regex("""site_url":"(.*?)".*"player_api":"(.*?)".*ver":"(.*?)"}""").find(script)
         return document.select(videoListSelector()).parallelCatchingFlatMapBlocking {
             var videoUrl = (dataRegex.groups[1]?.value + dataRegex.groups[2]?.value).toHttpUrlOrNull()!!.newBuilder()
-                videoUrl.addQueryParameter("p", it.attr("data-post"))
-                videoUrl.addQueryParameter("t", it.attr("data-type"))
-                videoUrl.addQueryParameter("n", it.attr("data-nume"))
-                videoUrl.addQueryParameter("ver", dataRegex.groups[3]?.value)
-                videoUrl.addQueryParameter("rand", generateRandomString(16))
+            videoUrl.addQueryParameter("p", it.attr("data-post"))
+            videoUrl.addQueryParameter("t", it.attr("data-type"))
+            videoUrl.addQueryParameter("n", it.attr("data-nume"))
+            videoUrl.addQueryParameter("ver", dataRegex.groups[3]?.value)
+            videoUrl.addQueryParameter("rand", generateRandomString(16))
             var videoFrame = client.newCall(GET(videoUrl.toString())).execute().body.string()
             var embedUrl = videoFrame.substringAfter("embed_url\": \"").substringBefore("\"")
             val referer = Headers.headersOf("Referer", dataRegex.groups[1]?.value + "/")
             val webViewIncpec = client.newBuilder().addInterceptor(GetSourcesInterceptor("action3.php", client)).build()
             val lol = webViewIncpec.newCall(GET(embedUrl, referer)).execute().body.string()
-            val test = lol.substringAfter("\"file\": \"").substringBefore("\"");
-            listOf(Video(test, test, test).let(::listOf));
+            val test = lol.substringAfter("\"file\": \"").substringBefore("\"")
+            listOf(Video(test, test, test))
         }
     }
     
-    private fun extractVideos(element: Element): List<Video> {
-        val url = element.attr("data-link")
-        val txt = element.text()
-        return when {
-            "Main" in txt -> {
-                videosFromMain(url)
-            }
-            url.contains("ok") -> {
-                OkruExtractor(client).videosFromUrl(url)
-            }
-            "Vidbom" in txt || "Vidshare" in txt || "Govid" in txt -> {
-                VidBomExtractor(client).videosFromUrl(url)
-            }
-            "Doodstream" in txt -> {
-                DoodExtractor(client).videoFromUrl(url, "Dood mirror")?.let(::listOf)
-            }
-            url.contains("uqload") -> {
-                UqloadExtractor(client).videosFromUrl(url, "mirror")
-            }
-            url.contains("tape") -> {
-                StreamTapeExtractor(client).videoFromUrl(url)?.let(::listOf)
-            }
-            "Upstream" in txt || "Streamruby" in txt || "Streamwish" in txt -> {
-                videosFromOthers(url, txt)
-            }
-            else -> null
-        } ?: emptyList()
-    }
     // =============================== Search ===============================
     override fun searchAnimeFromElement(element: Element): SAnime = popularAnimeFromElement(element)
 
