@@ -1,4 +1,4 @@
-package eu.kanade.tachiyomi.animeextension.ar.faselhd
+package eu.kanade.tachiyomi.animeextension.ar.cimalek
 
 import android.annotation.SuppressLint
 import android.app.Application
