@@ -20,7 +20,7 @@ import org.jsoup.nodes.Element
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
-class Cimalek: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
+class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val name = "Cimalek"
 
@@ -90,10 +90,10 @@ class Cimalek: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             GET("$baseUrl/page/$page?s=$query", headers)
         } else {
             val url = "$baseUrl/".toHttpUrlOrNull()!!.newBuilder()
-            if(sectionFilter.state != 0){
+            if (sectionFilter.state != 0) {
                 url.addPathSegment("category")
                 url.addPathSegment(sectionFilter.toUriPart())
-            } else if(categoryFilter.state != 0) {
+            } else if (categoryFilter.state != 0) {
                 url.addPathSegment("genre")
                 url.addPathSegment(genreFilter.toUriPart().lowercase())
             } else {
@@ -115,7 +115,7 @@ class Cimalek: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         AnimeFilter.Separator(),
         AnimeFilter.Header("الفلتره تعمل فقط لو كان اقسام الموقع على 'اختر'"),
         CategoryFilter(),
-        GenreFilter()
+        GenreFilter(),
     )
     private class SectionFilter : PairFilter(
         "اقسام الموقع",
@@ -127,22 +127,22 @@ class Cimalek: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             Pair("افلام هندي", "indian-movies"),
             Pair("افلام اسيوي", "asian-aflam"),
             Pair("افلام انمي", "anime-movies"),
-        )
+        ),
     )
     private class CategoryFilter : PairFilter(
         "النوع",
         arrayOf(
             Pair("اختر", "none"),
-            Pair("افلام","movies-cats"),
-            Pair("مسلسلات","series_genres"),
-            Pair("انمى","anime-cats")
-        )
+            Pair("افلام", "movies-cats"),
+            Pair("مسلسلات", "series_genres"),
+            Pair("انمى", "anime-cats"),
+        ),
     )
     private class GenreFilter : SingleFilter(
         "التصنيف",
         arrayOf(
-            "Action", "Adventure", "Animation", "Western", "Sport", "Short", "Documentary", "Fantasy", "Sci-fi", "Romance", "Comedy", "Family", "Drama", "Thriller", "Crime", "Horror", "Biography"
-        ).sortedArray()
+            "Action", "Adventure", "Animation", "Western", "Sport", "Short", "Documentary", "Fantasy", "Sci-fi", "Romance", "Comedy", "Family", "Drama", "Thriller", "Crime", "Horror", "Biography",
+        ).sortedArray(),
     )
 
     open class SingleFilter(displayName: String, private val vals: Array<String>) :
@@ -153,7 +153,9 @@ class Cimalek: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         AnimeFilter.Select<String>(displayName, vals.map { it.first }.toTypedArray()) {
         fun toUriPart() = vals[state].second
     }
+
     // =============================== Latest ===============================
+    
     override fun latestUpdatesFromElement(element: Element): SAnime = popularAnimeFromElement(element)
 
     override fun latestUpdatesNextPageSelector(): String = popularAnimeNextPageSelector()
@@ -163,6 +165,7 @@ class Cimalek: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun latestUpdatesSelector(): String = popularAnimeSelector()
 
     // =============================== Settings ===============================
+    
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
         val videoQualityPref = ListPreference(screen.context).apply {
             key = "preferred_quality"
@@ -181,7 +184,7 @@ class Cimalek: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }
         screen.addPreference(videoQualityPref)
     }
-    //=============================== Utilities ===============================
+    // =============================== Utilities ===============================
     private fun titleEdit(title: String, details: Boolean = false): String {
         return if (Regex("(?:فيلم|عرض)\\s(.*\\s[0-9]+)\\s(.+?)\\s").containsMatchIn(title)) {
             val titleGroup = Regex("(?:فيلم|عرض)\\s(.*\\s[0-9]+)\\s(.+?)\\s").find(title)
@@ -203,5 +206,4 @@ class Cimalek: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             title
         }
     }
-
 }
