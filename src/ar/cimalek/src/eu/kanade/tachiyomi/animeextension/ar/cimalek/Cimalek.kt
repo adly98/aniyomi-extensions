@@ -12,8 +12,11 @@ import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
+import eu.kanade.tachiyomi.util.asJsoup
+import eu.kanade.tachiyomi.util.parallelCatchingFlatMap
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
+import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import uy.kohesive.injekt.Injekt
@@ -53,13 +56,63 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         TODO("Not yet implemented")
     }
 
-    override fun episodeListSelector(): String {
-        TODO("Not yet implemented")
+    override fun episodeListParse(response: Response): List<SEpisode> {
+        val episodes = mutableListOf<SEpisode>()
+
+        fun episodeExtract(element: Element): SEpisode {
+            val episode = SEpisode.create()
+            episode.setUrlWithoutDomain(element.attr("href"))
+            episode.name = element.attr("title")
+            return episode
+        }
+        fun addEpisodes(res: Response) {
+            val document = res.asJsoup()
+            val url = res.request.url.toString()
+            if (url.contains("movies")) {
+                val episode = SEpisode.create().apply {
+                    name = "مشاهدة"
+                    setUrlWithoutDomain("$url/watch/")
+                }
+                episodes.add(episode)
+            } else {
+                document.select(seasonListSelector()).parallelCatchingFlatMap { sElement ->
+                    val seasonNum = sElement.select("span.se-a").text()
+                    val seasonUrl = sElement.attr("href")
+                    var seasonPage = client.newCall(GET(seasonUrl)).execute().asJsoup()
+                    seasonPage.select(episodeListSelector()).map{ eElement ->
+                        val episodeNum = eElement.select("span.serie").text().substringAfter("(").substringBefore(")")
+                        val episodeUrl = eElement.attr("href")
+                        val finalNum = (seasonNum + "." + episodeNum).toFloat()
+                        val episodeTitle = "الموسم $seasonNumber الحلقة $episodeNum"
+                        val episode = SEpisode.create().apply {
+                            name = episodeTitle
+                            episode_number = finalNum
+                            setUrlWithoutDomain("$episodeUrl/watch/")
+                        }
+                        episodes.add(episode)
+                    }
+                }
+            }
+            // document.select(episodeListSelector()).map { episodes.add(episodeFromElement(it)) }
+        }
+        addEpisodes(response)
+        return episodes
     }
+
+    override fun episodeListSelector(): String = "div.season-a ul.episodios li.episodesList a"
+
+    private fun seasonListSelector(): String = "div.season-a ul.seas-list li.sealist a"
 
     // =========================== Anime Details ============================
     override fun animeDetailsParse(document: Document): SAnime {
-        TODO("Not yet implemented")
+        val anime = SAnime.create()
+        anime.thumbnail_url = document.select("div.ani_detail-stage div.film-poster img").attr("src")
+        anime.title = document.select("div.anisc-more-info div.item:contains(الاسم) span:nth-child(3)").text()
+        anime.author = document.select("div.anisc-more-info div.item:contains(البلد) span:nth-child(3)").text()
+        anime.genre = document.select("div.anisc-detail div.item-list a").joinToString(", ") { it.text() }
+        anime.description = document.select("div.anisc-detail div.film-description div.text").text()
+        anime.status = if (document.select("div.anisc-detail div.item-list").text().contains("افلام")) SAnime.COMPLETED else SAnime.UNKNOWN
+        return anime
     }
 
     // ============================ Video Links =============================
@@ -100,6 +153,9 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             }
             url.addPathSegment("page")
             url.addPathSegment("$page")
+            if (categoryFilter.state != 0) {
+                url.addQueryParameter("type", categoryFilter)
+            }
             GET(url.toString(), headers)
         }
     }
@@ -122,25 +178,29 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             Pair("اختر", "none"),
             Pair("افلام اجنبي", "aflam-online"),
             Pair("افلام نتفليكس", "netflix-movies"),
-            Pair("افلام كرتون", "cartoon-movies"),
             Pair("افلام هندي", "indian-movies"),
             Pair("افلام اسيوي", "asian-aflam"),
+            Pair("افلام كرتون", "cartoon-movies"),
             Pair("افلام انمي", "anime-movies"),
+            Pair("مسلسلات اجنبي", "english-series"),
+            Pair("مسلسلات نتفليكس", "netflix-series"),
+            Pair("مسلسلات اسيوي", "asian-series"),
+            Pair("مسلسلات كرتون", "anime-series"),
+            Pair("مسلسلات انمي", "netflix-anime"),
         ),
     )
     private class CategoryFilter : PairFilter(
         "النوع",
         arrayOf(
             Pair("اختر", "none"),
-            Pair("افلام", "movies-cats"),
-            Pair("مسلسلات", "series_genres"),
-            Pair("انمى", "anime-cats"),
+            Pair("افلام", "movies"),
+            Pair("مسلسلات", "series"),
         ),
     )
     private class GenreFilter : SingleFilter(
         "التصنيف",
         arrayOf(
-            "Action", "Adventure", "Animation", "Western", "Sport", "Short", "Documentary", "Fantasy", "Sci-fi", "Romance", "Comedy", "Family", "Drama", "Thriller", "Crime", "Horror", "Biography",
+            "Action", "Adventure", "Animation", "Western", "Documentary", "Fantasy", "Science-fiction", "Romance", "Comedy", "Family", "Drama", "Thriller", "Crime", "Horror",
         ).sortedArray(),
     )
 
