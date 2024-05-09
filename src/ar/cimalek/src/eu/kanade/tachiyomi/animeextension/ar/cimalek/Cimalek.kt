@@ -52,13 +52,10 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun popularAnimeSelector(): String = "div.film_list-wrap div.item"
 
     // ============================== Episodes ==============================
-    override fun episodeFromElement(element: Element): SEpisode {
-        TODO("Not yet implemented")
-    }
+    override fun episodeFromElement(element: Element): SEpisode = throw UnsupportedOperationException()
 
     override fun episodeListParse(response: Response): List<SEpisode> {
         val episodes = mutableListOf<SEpisode>()
-
         val document = response.asJsoup()
         val url = response.request.url.toString()
         if (url.contains("movies")) {
