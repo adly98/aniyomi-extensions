@@ -12,6 +12,7 @@ import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
@@ -76,36 +77,90 @@ class Cimalek: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     // =============================== Search ===============================
-    override fun searchAnimeFromElement(element: Element): SAnime {
-        TODO("Not yet implemented")
-    }
+    override fun searchAnimeFromElement(element: Element): SAnime = popularAnimeFromElement(element)
 
-    override fun searchAnimeNextPageSelector(): String? {
-        TODO("Not yet implemented")
-    }
+    override fun searchAnimeNextPageSelector(): String = popularAnimeNextPageSelector()
 
     override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request {
-        TODO("Not yet implemented")
+        val filterList = if (filters.isEmpty()) getFilterList() else filters
+        val sectionFilter = filterList.find { it is SectionFilter } as SectionFilter
+        val categoryFilter = filterList.find { it is CategoryFilter } as CategoryFilter
+        val genreFilter = filterList.find { it is GenreFilter } as GenreFilter
+        return if (query.isNotBlank()) {
+            GET("$baseUrl/page/$page?s=$query", headers)
+        } else {
+            val url = "$baseUrl/".toHttpUrlOrNull()!!.newBuilder()
+            if(sectionFilter.state != 0){
+                url.addPathSegment("category")
+                url.addPathSegment(sectionFilter.toUriPart())
+            } else if(categoryFilter.state != 0) {
+                url.addPathSegment("genre")
+                url.addPathSegment(genreFilter.toUriPart().lowercase())
+            } else {
+                throw Exception("من فضلك اختر قسم او نوع")
+            }
+            url.addPathSegment("page")
+            url.addPathSegment("$page")
+            GET(url.toString(), headers)
+        }
     }
 
-    override fun searchAnimeSelector(): String {
-        TODO("Not yet implemented")
-    }
+    override fun searchAnimeSelector(): String = popularAnimeSelector()
 
+    // ============================ Filters =============================
+
+    override fun getFilterList() = AnimeFilterList(
+        AnimeFilter.Header("هذا القسم يعمل لو كان البحث فارع"),
+        SectionFilter(),
+        AnimeFilter.Separator(),
+        AnimeFilter.Header("الفلتره تعمل فقط لو كان اقسام الموقع على 'اختر'"),
+        CategoryFilter(),
+        GenreFilter()
+    )
+    private class SectionFilter : PairFilter(
+        "اقسام الموقع",
+        arrayOf(
+            Pair("اختر", "none"),
+            Pair("افلام اجنبي", "aflam-online"),
+            Pair("افلام نتفليكس", "netflix-movies"),
+            Pair("افلام كرتون", "cartoon-movies"),
+            Pair("افلام هندي", "indian-movies"),
+            Pair("افلام اسيوي", "asian-aflam"),
+            Pair("افلام انمي", "anime-movies"),
+        )
+    )
+    private class CategoryFilter : PairFilter(
+        "النوع",
+        arrayOf(
+            Pair("اختر", "none"),
+            Pair("افلام","movies-cats"),
+            Pair("مسلسلات","series_genres"),
+            Pair("انمى","anime-cats")
+        )
+    )
+    private class GenreFilter : SingleFilter(
+        "التصنيف",
+        arrayOf(
+            "Action", "Adventure", "Animation", "Western", "Sport", "Short", "Documentary", "Fantasy", "Sci-fi", "Romance", "Comedy", "Family", "Drama", "Thriller", "Crime", "Horror", "Biography"
+        ).sortedArray()
+    )
+
+    open class SingleFilter(displayName: String, private val vals: Array<String>) :
+        AnimeFilter.Select<String>(displayName, vals) {
+        fun toUriPart() = vals[state]
+    }
+    open class PairFilter(displayName: String, private val vals: Array<Pair<String, String>>) :
+        AnimeFilter.Select<String>(displayName, vals.map { it.first }.toTypedArray()) {
+        fun toUriPart() = vals[state].second
+    }
     // =============================== Latest ===============================
-    override fun latestUpdatesFromElement(element: Element): SAnime {
-        val anime = SAnime.create()
-        anime.title = element.select("div.data .title").text()
-        anime.thumbnail_url = element.select("img").attr("data-src")
-        anime.setUrlWithoutDomain(element.select("a").attr("href"))
-        return anime
-    }
+    override fun latestUpdatesFromElement(element: Element): SAnime = popularAnimeFromElement(element)
 
-    override fun latestUpdatesNextPageSelector(): String = "div.pagination div.pagination-num i#nextpagination"
+    override fun latestUpdatesNextPageSelector(): String = popularAnimeNextPageSelector()
 
     override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/recent/page/$page/")
 
-    override fun latestUpdatesSelector(): String = "div.film_list-wrap div.item"
+    override fun latestUpdatesSelector(): String = popularAnimeSelector()
 
     // =============================== Settings ===============================
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
