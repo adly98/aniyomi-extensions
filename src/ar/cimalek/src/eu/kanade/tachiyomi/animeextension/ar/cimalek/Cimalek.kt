@@ -86,7 +86,7 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 }
             }
         }
-        return episodes
+        return episodes.sortedBy { it.episodeNumber }
     }
 
     override fun episodeListSelector(): String = "div.season-a ul.episodios li.episodesList a"
