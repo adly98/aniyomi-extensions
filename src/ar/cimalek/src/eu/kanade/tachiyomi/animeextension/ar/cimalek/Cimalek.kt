@@ -103,18 +103,70 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     // ============================ Video Links =============================
-    override fun videoFromElement(element: Element): Video {
-        TODO("Not yet implemented")
-    }
+    override fun videoFromElement(element: Element): Video = throw UnsupportedOperationException()
 
-    override fun videoListSelector(): String {
-        TODO("Not yet implemented")
-    }
+    override fun videoUrlParse(document: Document): String = throw UnsupportedOperationException()
 
-    override fun videoUrlParse(document: Document): String {
-        TODO("Not yet implemented")
-    }
+    override fun videoListSelector(): String = "div#servers-content div.server-item div:contains(Cloud)"
 
+    override fun videoListParse(response: Response): List<Video> {
+        fun generateRandomString(length: Int): String {
+            val characters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+            val result = StringBuilder(length)
+            for (i in 0 until length) {
+              val randomIndex = (Math.random() * characters.length).toInt()
+                result.append(characters[randomIndex])
+            }
+            return result.toString()
+        }
+        val document = response.asJsoup()
+        val script = document.selectFirst("script:containsData(dtAjax)")!!.data()
+        val dataRegex = Regex("""site_url":"(.*?)".*"player_api":"(.*?)".*ver":"(.*?)"}""").find(script)
+        return document.select(videoListSelector()).parallelCatchingFlatMapBlocking {
+            var videoUrl = (dataRegex.groups[1]?.value + dataRegex.groups[2]?.value).toHttpUrlOrNull()!!.newBuilder()
+                videoUrl.addQueryParameter("p", it.attr("data-post"))
+                videoUrl.addQueryParameter("t", it.attr("data-type"))
+                videoUrl.addQueryParameter("n", it.attr("data-nume"))
+                videoUrl.addQueryParameter("ver", dataRegex.groups[3]?.value)
+                videoUrl.addQueryParameter("rand", generateRandomString(16))
+            var videoFrame = client.newCall(GET(videoUrl.toString())).execute().body.string()
+            var embedUrl = videoFrame.substringAfter("embed_url\": \"").substringBefore("\"")
+            val referer = Headers.headersOf("Referer", dataRegex.groups[1]?.value + "/")
+            val webViewIncpec = client.newBuilder().addInterceptor(GetSourcesInterceptor("action3.php", client)).build()
+            val lol = webViewIncpec.newCall(GET(embedUrl, referer)).execute().body.string()
+            val test = lol.substringAfter("\"file\": \"").substringBefore("\"");
+            listOf(Video(test, test, test).let(::listOf));
+        }
+    }
+    
+    private fun extractVideos(element: Element): List<Video> {
+        val url = element.attr("data-link")
+        val txt = element.text()
+        return when {
+            "Main" in txt -> {
+                videosFromMain(url)
+            }
+            url.contains("ok") -> {
+                OkruExtractor(client).videosFromUrl(url)
+            }
+            "Vidbom" in txt || "Vidshare" in txt || "Govid" in txt -> {
+                VidBomExtractor(client).videosFromUrl(url)
+            }
+            "Doodstream" in txt -> {
+                DoodExtractor(client).videoFromUrl(url, "Dood mirror")?.let(::listOf)
+            }
+            url.contains("uqload") -> {
+                UqloadExtractor(client).videosFromUrl(url, "mirror")
+            }
+            url.contains("tape") -> {
+                StreamTapeExtractor(client).videoFromUrl(url)?.let(::listOf)
+            }
+            "Upstream" in txt || "Streamruby" in txt || "Streamwish" in txt -> {
+                videosFromOthers(url, txt)
+            }
+            else -> null
+        } ?: emptyList()
+    }
     // =============================== Search ===============================
     override fun searchAnimeFromElement(element: Element): SAnime = popularAnimeFromElement(element)
 
