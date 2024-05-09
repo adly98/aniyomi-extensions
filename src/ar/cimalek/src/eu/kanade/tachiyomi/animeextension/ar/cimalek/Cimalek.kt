@@ -59,8 +59,8 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun episodeListParse(response: Response): List<SEpisode> {
         val episodes = mutableListOf<SEpisode>()
 
-        val document = res.asJsoup()
-        val url = res.request.url.toString()
+        val document = response.asJsoup()
+        val url = response.request.url.toString()
         if (url.contains("movies")) {
             val episode = SEpisode.create().apply {
                 name = "مشاهدة"
