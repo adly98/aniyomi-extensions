@@ -151,6 +151,7 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         AnimeFilter.Select<String>(displayName, vals.map { it.first }.toTypedArray()) {
         fun toUriPart() = vals[state].second
     }
+
     // =============================== Latest ===============================
     override fun latestUpdatesFromElement(element: Element): SAnime = popularAnimeFromElement(element)
 
@@ -159,6 +160,7 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/recent/page/$page/")
 
     override fun latestUpdatesSelector(): String = popularAnimeSelector()
+
     // =============================== Settings ===============================
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
         val videoQualityPref = ListPreference(screen.context).apply {
@@ -178,6 +180,7 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }
         screen.addPreference(videoQualityPref)
     }
+
     // =============================== Utilities ===============================
     private fun titleEdit(title: String, details: Boolean = false): String {
         return if (Regex("(?:فيلم|عرض)\\s(.*\\s[0-9]+)\\s(.+?)\\s").containsMatchIn(title)) {
