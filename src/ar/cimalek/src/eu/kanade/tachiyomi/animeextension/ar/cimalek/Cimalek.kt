@@ -79,7 +79,7 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     val seasonNum = sElement.select("span.se-a").text()
                     val seasonUrl = sElement.attr("href")
                     var seasonPage = client.newCall(GET(seasonUrl)).execute().asJsoup()
-                    seasonPage.select(episodeListSelector()).map{ eElement ->
+                    seasonPage.select(episodeListSelector()).map { eElement ->
                         val episodeNum = eElement.select("span.serie").text().substringAfter("(").substringBefore(")")
                         val episodeUrl = eElement.attr("href")
                         val finalNum = (seasonNum + "." + episodeNum).toFloat()
