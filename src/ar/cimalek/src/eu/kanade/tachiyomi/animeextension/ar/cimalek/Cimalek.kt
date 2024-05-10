@@ -138,7 +138,7 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         videos.add(Video(videoUrl.toString(), videoUrl.toString(), videoUrl.toString()))
         var videoFrame = client.newCall(GET(videoUrl.toString())).execute().body.string()
         var embedUrl = videoFrame.substringAfter("embed_url\": \"").substringBefore("\"")
-        videos.add(Video(embedUrl, embedUrl, embedUrl))
+        videos.add(Video(videoFrame, videoFrame, videoFrame))
         return videos
         /*val referer = headers.newBuilder().add("Referer", "$baseUrl/").build()
         val webViewIncpec = client.newBuilder().addInterceptor(GetSourcesInterceptor("action3.php", client)).build()
