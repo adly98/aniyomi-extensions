@@ -123,15 +123,15 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val script = document.selectFirst("script:containsData(dtAjax)")!!.data()
         val dataRegex = Regex("""site_url":"(.*?)".*"player_api":"(.*?)".*ver":"(.*?)"}""").find(script)!!
         return document.select(videoListSelector()).parallelCatchingFlatMapBlocking {
-            var videoUrl = (dataRegex.groups[1].value + dataRegex.groups[2].value).toHttpUrlOrNull()!!.newBuilder()
+            var videoUrl = (dataRegex.groupValues[1] + dataRegex.groupValues[2]).toHttpUrlOrNull()!!.newBuilder()
             videoUrl.addQueryParameter("p", it.attr("data-post"))
             videoUrl.addQueryParameter("t", it.attr("data-type"))
             videoUrl.addQueryParameter("n", it.attr("data-nume"))
-            videoUrl.addQueryParameter("ver", dataRegex.groups[3].value)
+            videoUrl.addQueryParameter("ver", dataRegex.groupValues[3])
             videoUrl.addQueryParameter("rand", generateRandomString(16))
             var videoFrame = client.newCall(GET(videoUrl.toString())).execute().body.string()
             var embedUrl = videoFrame.substringAfter("embed_url\": \"").substringBefore("\"")
-            val referer = headers.newBuilder().add("Referer", dataRegex.groups[1].value + "/").build()
+            val referer = headers.newBuilder().add("Referer", dataRegex.groupValues[1] + "/").build()
             val webViewIncpec = client.newBuilder().addInterceptor(GetSourcesInterceptor("action3.php", client)).build()
             val lol = webViewIncpec.newCall(GET(embedUrl, referer)).execute().body.string()
             val test = lol.substringAfter("\"file\": \"").substringBefore("\"")
