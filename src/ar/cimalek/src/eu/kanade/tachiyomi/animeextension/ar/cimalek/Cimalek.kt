@@ -135,16 +135,14 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         videoUrl.addQueryParameter("n", element.attr("data-nume"))
         videoUrl.addQueryParameter("ver", version)
         videoUrl.addQueryParameter("rand", generateRandomString(16))
-        videos.add(Video(videoUrl.toString(), videoUrl.toString(), videoUrl.toString()))
         var videoFrame = client.newCall(GET(videoUrl.toString())).execute().body.string()
-        var embedUrl = videoFrame.substringAfter("embed_url\": \"").substringBefore("\"")
-        videos.add(Video(videoFrame, videoFrame, videoFrame))
-        return videos
-        /*val referer = headers.newBuilder().add("Referer", "$baseUrl/").build()
+        var embedUrl = videoFrame.substringAfter("embed_url\":\"").substringBefore("\"")
+        val referer = headers.newBuilder().add("Referer", "$baseUrl/").build()
         val webViewIncpec = client.newBuilder().addInterceptor(GetSourcesInterceptor("action3.php", client)).build()
         val lol = webViewIncpec.newCall(GET(embedUrl, referer)).execute().body.string()
-        val test = lol.substringAfter("\"file\": \"").substringBefore("\"")
-        listOf(Video(test, test, test))*/
+        videos.add(Video(lol, lol, lol))
+        return videos
+        /*val test = lol.substringAfter("\"file\": \"").substringBefore("\"")*/
     }
 
     // =============================== Search ===============================
