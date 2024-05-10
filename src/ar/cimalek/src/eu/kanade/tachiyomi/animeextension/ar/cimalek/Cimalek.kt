@@ -110,6 +110,15 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun videoListSelector(): String = "div#servers-content div.server-item div:contains(Cloud)"
 
     override fun videoListParse(response: Response): List<Video> {
+        val document = response.asJsoup()
+        val script = document.selectFirst("script:containsData(dtAjax)")!!.data()
+        val version = script.substringAfter("ver\":\"").substringBefore("\"")
+        return document.select(videoListSelector()).parallelCatchingFlatMapBlocking {
+            extractVideos(it, version)
+        }
+    }
+
+    private fun extractVideos(element: Element, version: String): List<Video> {
         fun generateRandomString(length: Int): String {
             val characters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
             val result = StringBuilder(length)
@@ -119,23 +128,23 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             }
             return result.toString()
         }
-        val document = response.asJsoup()
-        val script = document.selectFirst("script:containsData(dtAjax)")!!.data()
-        return document.select(videoListSelector()).parallelCatchingFlatMapBlocking {
-            var videoUrl = "$baseUrl/wp-json/lalaplayer/v2/".toHttpUrlOrNull()!!.newBuilder()
-            videoUrl.addQueryParameter("p", it.attr("data-post"))
-            videoUrl.addQueryParameter("t", it.attr("data-type"))
-            videoUrl.addQueryParameter("n", it.attr("data-nume"))
-            videoUrl.addQueryParameter("ver", script.substringAfter("ver\":\"").substringBefore("\""))
-            videoUrl.addQueryParameter("rand", generateRandomString(16))
-            var videoFrame = client.newCall(GET(videoUrl.toString())).execute().body.string()
-            var embedUrl = videoFrame.substringAfter("embed_url\": \"").substringBefore("\"")
-            val referer = headers.newBuilder().add("Referer", "$baseUrl/").build()
-            val webViewIncpec = client.newBuilder().addInterceptor(GetSourcesInterceptor("action3.php", client)).build()
-            val lol = webViewIncpec.newCall(GET(embedUrl, referer)).execute().body.string()
-            val test = lol.substringAfter("\"file\": \"").substringBefore("\"")
-            return listOf(Video(test, test, test))
-        }
+        val videos = mutableListOf<Video>()
+        var videoUrl = "$baseUrl/wp-json/lalaplayer/v2/".toHttpUrlOrNull()!!.newBuilder()
+        videoUrl.addQueryParameter("p", element.attr("data-post"))
+        videoUrl.addQueryParameter("t", element.attr("data-type"))
+        videoUrl.addQueryParameter("n", element.attr("data-nume"))
+        videoUrl.addQueryParameter("ver", version)
+        videoUrl.addQueryParameter("rand", generateRandomString(16))
+        videos.add(Video(videoUrl.toString(), videoUrl.toString(), videoUrl.toString()))
+        var videoFrame = client.newCall(GET(videoUrl.toString())).execute().body.string()
+        var embedUrl = videoFrame.substringAfter("embed_url\": \"").substringBefore("\"")
+        videos.add(Video(embedUrl, embedUrl, embedUrl))
+        return videos
+        /*val referer = headers.newBuilder().add("Referer", "$baseUrl/").build()
+        val webViewIncpec = client.newBuilder().addInterceptor(GetSourcesInterceptor("action3.php", client)).build()
+        val lol = webViewIncpec.newCall(GET(embedUrl, referer)).execute().body.string()
+        val test = lol.substringAfter("\"file\": \"").substringBefore("\"")
+        listOf(Video(test, test, test))*/
     }
 
     // =============================== Search ===============================
