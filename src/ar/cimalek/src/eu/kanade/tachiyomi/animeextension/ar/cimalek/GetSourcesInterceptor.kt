@@ -71,7 +71,7 @@ class GetSourcesInterceptor(private val client: OkHttpClient) : Interceptor {
                     request: WebResourceRequest,
                 ): WebResourceResponse? {
                     val url = request.url.toString()
-                    val types = Regex(""".(?:mp4|m3u8)""");
+                    val types = Regex(""".(?:mp4|m3u8)""")
                     if (Regex.containsMatchIn(url)) {
                         val newHeaders = request.requestHeaders.toHeaders()
                         newRequest = GET(url, newHeaders)
