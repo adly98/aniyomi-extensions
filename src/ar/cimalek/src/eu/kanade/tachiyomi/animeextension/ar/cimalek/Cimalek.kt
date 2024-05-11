@@ -140,7 +140,7 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val referer = headers.newBuilder().add("Referer", "$baseUrl/").build()
         val webViewIncpec = client.newBuilder().addInterceptor(GetSourcesInterceptor("action", client)).build()
         val lol = webViewIncpec.newCall(GET(embedUrl, referer)).execute()
-        if(lol.request.url.toString().contains("action")) {
+        if (lol.request.url.toString().contains("action")) {
             videos.add(Video(lol.request.toString(), lol.request.toString(), lol.request.toString()))
         }
         return videos
