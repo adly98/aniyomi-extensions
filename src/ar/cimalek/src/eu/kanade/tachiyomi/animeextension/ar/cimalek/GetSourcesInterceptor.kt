@@ -9,12 +9,10 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-// import eu.kanade.tachiyomi.network.GET
 import okhttp3.Headers.Companion.toHeaders
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
-// import okhttp3.Response
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.IOException
