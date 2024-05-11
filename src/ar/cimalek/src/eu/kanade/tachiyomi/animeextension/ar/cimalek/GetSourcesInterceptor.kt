@@ -9,10 +9,12 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import eu.kanade.tachiyomi.network.GET
 import okhttp3.Headers.Companion.toHeaders
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.IOException
@@ -28,7 +30,7 @@ class GetSourcesInterceptor(private val getSources: String, private val client: 
     }
 
     @Synchronized
-    override fun intercept(chain: Interceptor.Chain): String {
+    override fun intercept(chain: Interceptor.Chain): Response {
         initWebView
 
         val request = chain.request()
@@ -36,22 +38,21 @@ class GetSourcesInterceptor(private val getSources: String, private val client: 
         try {
             val newRequest = resolveWithWebView(request)
 
-            return newRequest ?: "http://NullServer"
-            // chain.proceed(newRequest ?: request)
+            return chain.proceed(newRequest ?: request)
         } catch (e: Exception) {
             throw IOException(e)
         }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun resolveWithWebView(request: Request): String? {
+    private fun resolveWithWebView(request: Request): Request? {
         val latch = CountDownLatch(1)
 
         var webView: WebView? = null
 
         val origRequestUrl = request.url.toString()
         val headers = request.headers.toMultimap().mapValues { it.value.getOrNull(0) ?: "" }.toMutableMap()
-        var newRequest: String? = null
+        var newRequest: Request? = null
 
         handler.post {
             val webview = WebView(context)
@@ -72,7 +73,7 @@ class GetSourcesInterceptor(private val getSources: String, private val client: 
                     val url = request.url.toString()
                     if (url.contains(getSources)) {
                         val newHeaders = request.requestHeaders.toHeaders()
-                        newRequest = url
+                        newRequest = GET(url, newHeaders)
                         latch.countDown()
                     }
                     return super.shouldInterceptRequest(view, request)
