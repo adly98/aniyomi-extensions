@@ -52,7 +52,7 @@ class GetSourcesInterceptor(private val getSources: String, private val client: 
 
         val origRequestUrl = request.url.toString()
         val headers = request.headers.toMultimap().mapValues { it.value.getOrNull(0) ?: "" }.toMutableMap()
-        var newRequest: Request? = null
+        var newRequest: String? = null
 
         handler.post {
             val webview = WebView(context)
@@ -73,7 +73,7 @@ class GetSourcesInterceptor(private val getSources: String, private val client: 
                     val url = request.url.toString()
                     if (url.contains(getSources)) {
                         val newHeaders = request.requestHeaders.toHeaders()
-                        newRequest = GET(url, newHeaders)
+                        newRequest = url
                         latch.countDown()
                     }
                     return super.shouldInterceptRequest(view, request)
