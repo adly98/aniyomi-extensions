@@ -9,8 +9,10 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import eu.kanade.tachiyomi.network.GET
+import com.github.acsbendi.Android-Request-Inspector-WebView
+import eu.kanade.tachiyomi.network.POST
 import okhttp3.Headers.Companion.toHeaders
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -71,10 +73,11 @@ class GetSourcesInterceptor(private val client: OkHttpClient) : Interceptor {
                     request: WebResourceRequest,
                 ): WebResourceResponse? {
                     val url = request.url.toString()
-                    val types = Regex(""".(?:mp4|m3u8)""")
+                    val types = Regex("""action\d.php""")
                     if (types.containsMatchIn(url)) {
                         val newHeaders = request.requestHeaders.toHeaders()
-                        newRequest = GET(url, newHeaders)
+                        val body = request.body.toString()
+                        newRequest = POST(url, newHeaders, body)
                         latch.countDown()
                     }
                     return super.shouldInterceptRequest(view, request)

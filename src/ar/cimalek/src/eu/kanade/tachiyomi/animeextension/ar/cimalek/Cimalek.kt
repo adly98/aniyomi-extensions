@@ -107,7 +107,7 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun videoUrlParse(document: Document): String = throw UnsupportedOperationException()
 
-    override fun videoListSelector(): String = "div#servers-content div.server-item div:contains(Cloud)"
+    override fun videoListSelector(): String = "div#servers-content div.server-item div"
 
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
@@ -140,7 +140,7 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val referer = headers.newBuilder().add("Referer", "$baseUrl/").build()
         val webViewIncpec = client.newBuilder().addInterceptor(GetSourcesInterceptor(client)).build()
         val lol = webViewIncpec.newCall(GET(embedUrl, referer)).execute()
-        videos.add(Video(lol.request.url.toString(), lol.request.url.toString(), lol.request.url.toString()))
+        videos.add(Video(lol.body.string(), lol.body.string(), lol.body.string()))
         return videos
         /*val test = lol.substringAfter("\"file\": \"").substringBefore("\"")*/
     }
