@@ -73,7 +73,8 @@ class GetSourcesInterceptor(private val getSources: String, private val client: 
                     val url = request.url.toString()
                     if (url.contains(getSources)) {
                         val newHeaders = request.requestHeaders.toHeaders()
-                        newRequest = GET(url, newHeaders)
+                        val newBody = request.requestBody
+                        newRequest = POST(url, newHeaders, newBody)
                         latch.countDown()
                     }
                     return super.shouldInterceptRequest(view, request)
