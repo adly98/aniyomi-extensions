@@ -9,7 +9,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import eu.kanade.tachiyomi.network.GET
+//import eu.kanade.tachiyomi.network.GET
 import okhttp3.Headers.Companion.toHeaders
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -30,7 +30,7 @@ class GetSourcesInterceptor(private val getSources: String, private val client: 
     }
 
     @Synchronized
-    override fun intercept(chain: Interceptor.Chain): Response {
+    override fun intercept(chain: Interceptor.Chain): String {
         initWebView
 
         val request = chain.request()
@@ -38,14 +38,15 @@ class GetSourcesInterceptor(private val getSources: String, private val client: 
         try {
             val newRequest = resolveWithWebView(request)
 
-            return chain.proceed(newRequest ?: request)
+            return newRequest ?: "http://NullServer"
+            //chain.proceed(newRequest ?: request)
         } catch (e: Exception) {
             throw IOException(e)
         }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun resolveWithWebView(request: Request): Request? {
+    private fun resolveWithWebView(request: Request): String? {
         val latch = CountDownLatch(1)
 
         var webView: WebView? = null
