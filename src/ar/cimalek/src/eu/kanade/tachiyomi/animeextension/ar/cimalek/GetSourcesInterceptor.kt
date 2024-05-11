@@ -1,4 +1,4 @@
-package eu.kanade.tachiyomi.animeextension.ar.faselhd
+package eu.kanade.tachiyomi.animeextension.ar.cimalek
 
 import android.annotation.SuppressLint
 import android.app.Application
@@ -72,7 +72,7 @@ class GetSourcesInterceptor(private val client: OkHttpClient) : Interceptor {
                 ): WebResourceResponse? {
                     val url = request.url.toString()
                     val types = Regex(""".(?:mp4|m3u8)""")
-                    if (Regex.containsMatchIn(url)) {
+                    if (types.containsMatchIn(url)) {
                         val newHeaders = request.requestHeaders.toHeaders()
                         newRequest = GET(url, newHeaders)
                         latch.countDown()
