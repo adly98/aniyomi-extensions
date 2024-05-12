@@ -4,4 +4,14 @@ ext {
     extVersionCode = 1
 }
 
+allprojects {
+    repositories {
+        maven { url 'https://jitpack.io' }
+    }
+}
+
 apply from: "$rootDir/common.gradle"
+
+dependencies {
+    implementation "com.github.acsbendi:Android-Request-Inspector-WebView:1.0.6"
+}

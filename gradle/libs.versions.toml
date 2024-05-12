@@ -1,12 +1,10 @@
 [versions]
-agp_version = "8.4.0"
-androidRequestInspectorWebviewVersion = "1.0.6"
+agp_version = "8.2.1"
 coroutines_version = "1.7.1"
 kotlin_version = "1.8.22"
 serialization_version = "1.5.1"
 
 [libraries]
-android-request-inspector-webview = { module = "com.github.acsbendi:Android-Request-Inspector-WebView", version.ref = "androidRequestInspectorWebviewVersion" }
 gradle-agp = { module = "com.android.tools.build:gradle", version.ref = "agp_version" }
 gradle-kotlin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin_version" }
 gradle-kotlin-serialization = { module = "org.jetbrains.kotlin:kotlin-serialization", version.ref = "kotlin_version" }
