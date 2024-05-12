@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.SharedPreferences
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
+import eu.kanade.tachiyomi.animeextension.ar.cimalek.interceptor.GetSourcesInterceptor
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilter
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
@@ -68,11 +69,11 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             document.select(seasonListSelector()).parallelCatchingFlatMapBlocking { sElement ->
                 val seasonNum = sElement.select("span.se-a").text()
                 val seasonUrl = sElement.attr("href")
-                var seasonPage = client.newCall(GET(seasonUrl)).execute().asJsoup()
+                val seasonPage = client.newCall(GET(seasonUrl)).execute().asJsoup()
                 seasonPage.select(episodeListSelector()).map { eElement ->
                     val episodeNum = eElement.select("span.serie").text().substringAfter("(").substringBefore(")")
                     val episodeUrl = eElement.attr("href")
-                    val finalNum = (seasonNum + "." + episodeNum).toFloat()
+                    val finalNum = ("$seasonNum.$episodeNum").toFloat()
                     val episodeTitle = "الموسم $seasonNum الحلقة $episodeNum"
                     val episode = SEpisode.create().apply {
                         name = episodeTitle
@@ -129,14 +130,14 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             return result.toString()
         }
         val videos = mutableListOf<Video>()
-        var videoUrl = "$baseUrl/wp-json/lalaplayer/v2/".toHttpUrlOrNull()!!.newBuilder()
+        val videoUrl = "$baseUrl/wp-json/lalaplayer/v2/".toHttpUrlOrNull()!!.newBuilder()
         videoUrl.addQueryParameter("p", element.attr("data-post"))
         videoUrl.addQueryParameter("t", element.attr("data-type"))
         videoUrl.addQueryParameter("n", element.attr("data-nume"))
         videoUrl.addQueryParameter("ver", version)
         videoUrl.addQueryParameter("rand", generateRandomString(16))
-        var videoFrame = client.newCall(GET(videoUrl.toString())).execute().body.string()
-        var embedUrl = videoFrame.substringAfter("embed_url\":\"").substringBefore("\"")
+        val videoFrame = client.newCall(GET(videoUrl.toString())).execute().body.string()
+        val embedUrl = videoFrame.substringAfter("embed_url\":\"").substringBefore("\"")
         val referer = headers.newBuilder().add("Referer", "$baseUrl/").build()
         val webViewIncpec = client.newBuilder().addInterceptor(GetSourcesInterceptor(client)).build()
         val lol = webViewIncpec.newCall(GET(embedUrl, referer)).execute()

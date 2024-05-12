@@ -1,7 +1,0 @@
-ext {
-    extName = 'FASELHD'
-    extClass = '.FASELHD'
-    extVersionCode = 14
-}
-
-apply from: "$rootDir/common.gradle"
