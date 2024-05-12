@@ -1,15 +1,12 @@
-package eu.kanade.tachiyomi.animeextension.ar.cimalek
+package eu.kanade.tachiyomi.animeextension.ar.cimalek.interceptor
 
 import android.annotation.SuppressLint
 import android.app.Application
 import android.os.Handler
 import android.os.Looper
-import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
-import android.webkit.WebViewClient
-import com.github.acsbendi.Android-Request-Inspector-WebView
 import eu.kanade.tachiyomi.network.POST
 import okhttp3.Headers.Companion.toHeaders
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -67,17 +64,17 @@ class GetSourcesInterceptor(private val client: OkHttpClient) : Interceptor {
                 loadWithOverviewMode = false
                 userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:94.0) Gecko/20100101 Firefox/94.0"
             }
-            webview.webViewClient = object : WebViewClient() {
+            webview.webViewClient = object : WriteHandlingWebViewClient(webview) {
                 override fun shouldInterceptRequest(
                     view: WebView,
-                    request: WebResourceRequest,
+                    request: WriteHandlingWebResourceRequest,
                 ): WebResourceResponse? {
                     val url = request.url.toString()
                     val types = Regex("""action\d.php""")
                     if (types.containsMatchIn(url)) {
                         val newHeaders = request.requestHeaders.toHeaders()
-                        val body = request.body.toRequestBody()
-                        newRequest = POST(url, newHeaders, body)
+                        val newBody = request.ajaxData.toRequestBody()
+                        newRequest = POST(url, newHeaders, newBody)
                         latch.countDown()
                     }
                     return super.shouldInterceptRequest(view, request)
