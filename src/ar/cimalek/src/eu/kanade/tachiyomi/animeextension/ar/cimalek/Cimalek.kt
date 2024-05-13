@@ -144,7 +144,7 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val videoRegex = Regex("""m3u8""")
         val webViewInterceptor = client.newBuilder().addInterceptor(GetSourcesInterceptor(videoRegex)).build()
         val lol = webViewInterceptor.newCall(GET(embedUrl, referer)).execute()
-        if (videoRegex.containsMatchIn(lol.request.url.toString())){
+        if (videoRegex.containsMatchIn(lol.request.url.toString())) {
             lol.body.string().substringAfter("#EXT-X-STREAM-INF:").split("#EXT-X-STREAM-INF:").forEach {
                 val quality = it.substringAfter("RESOLUTION=").substringAfter("x").substringBefore(",") + "p"
                 val playUrl = it.substringAfter("\n").substringBefore("\n").replace("https", "http")
