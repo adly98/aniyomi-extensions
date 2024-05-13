@@ -20,7 +20,7 @@ import java.io.IOException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
-class GetSourcesInterceptor() : Interceptor {
+class GetSourcesInterceptor(private val searchRegex: Regex) : Interceptor {
     private val context = Injekt.get<Application>()
     private val handler by lazy { Handler(Looper.getMainLooper()) }
 
@@ -70,7 +70,7 @@ class GetSourcesInterceptor() : Interceptor {
                     request: WebResourceRequest,
                 ): WebResourceResponse? {
                     val url = request.url.toString()
-                    if (Regex("""m3u8""").containsMatchIn(url)) {
+                    if (searchRegex.containsMatchIn(url)) {
                         val newHeaders = request.requestHeaders.toHeaders()
                         newRequest = GET(url, newHeaders)
                         latch.countDown()
