@@ -4,14 +4,15 @@ import android.annotation.SuppressLint
 import android.app.Application
 import android.os.Handler
 import android.os.Looper
+import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
-import eu.kanade.tachiyomi.network.POST
+import android.webkit.WebViewClient
+import eu.kanade.tachiyomi.network.GET
 import okhttp3.Headers.Companion.toHeaders
 import okhttp3.Interceptor
 import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -49,36 +50,32 @@ class GetSourcesInterceptor() : Interceptor {
         var webView: WebView? = null
 
         val origRequestUrl = request.url.toString()
-        val headers =
-            request.headers.toMultimap().mapValues { it.value.getOrNull(0) ?: "" }.toMutableMap()
+        val headers = request.headers.toMultimap().mapValues { it.value.getOrNull(0) ?: "" }.toMutableMap()
         var newRequest: Request? = null
 
         handler.post {
-            val webView1 = WebView(context)
-            webView = webView1
-            with(webView1.settings) {
+            val webview = WebView(context)
+            webView = webview
+            with(webview.settings) {
                 javaScriptEnabled = true
                 domStorageEnabled = true
                 databaseEnabled = true
                 useWideViewPort = false
                 loadWithOverviewMode = false
-                userAgentString =
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:94.0) Gecko/20100101 Firefox/94.0"
+                userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:94.0) Gecko/20100101 Firefox/94.0"
             }
-            webView1.webViewClient = object : RequestInspectorWebViewClient(webView1) {
+            webview.webViewClient = object : WebViewClient() {
                 override fun shouldInterceptRequest(
                     view: WebView,
-                    webViewRequest: WebViewRequest,
+                    request: WebResourceRequest,
                 ): WebResourceResponse? {
-                    val url = webViewRequest.url
-                    val types = Regex("""action\d.php""")
-                    if (types.containsMatchIn(url)) {
-                        val newHeaders = webViewRequest.headers.toHeaders()
-                        val newBody = webViewRequest.body.toRequestBody()
-                        newRequest = POST(url, newHeaders, newBody)
+                    val url = request.url.toString()
+                    if (Regex("""m3u8""").containsMatchIn(url)) {
+                        val newHeaders = request.requestHeaders.toHeaders()
+                        newRequest = GET(url, newHeaders)
                         latch.countDown()
                     }
-                    return super.shouldInterceptRequest(view, webViewRequest)
+                    return super.shouldInterceptRequest(view, request)
                 }
             }
 
