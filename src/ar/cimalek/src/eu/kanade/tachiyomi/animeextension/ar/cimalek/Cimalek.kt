@@ -74,7 +74,7 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     val episodeNum = eElement.select("span.serie").text().substringAfter("(").substringBefore(")")
                     val episodeUrl = eElement.attr("href")
                     val finalNum = ("$seasonNum.$episodeNum").toFloat()
-                    val episodeTitle = "الموسم $seasonNum الحلقة $episodeNum"
+                    val episodeTitle = "الموسم ${seasonNum.toInt()} الحلقة ${episodeNum.toInt()}"
                     val episode = SEpisode.create().apply {
                         name = episodeTitle
                         episode_number = finalNum
@@ -84,7 +84,7 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 }
             }
         }
-        return episodes.sortedBy { it.episode_number }
+        return episodes.sortedBy { it.episode_number }.reversed()
     }
 
     override fun episodeListSelector(): String = "div.season-a ul.episodios li.episodesList a"
@@ -146,7 +146,7 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             lol.body.string().substringAfter("#EXT-X-STREAM-INF:").split("#EXT-X-STREAM-INF:").forEach {
                 val quality = it.substringAfter("RESOLUTION=").substringBefore("\n").substringAfter("x").substringBefore(",") + "p"
                 val playUrl = it.substringAfter("\n").substringBefore("\n").replace("https", "http")
-                videoList.add(Video(playUrl, "${element.attr("data-type")} : $quality", playUrl, headers = referer))
+                videoList.add(Video(playUrl, "${element.text()}: $quality", playUrl, headers = referer))
             }
         }
         return videoList
