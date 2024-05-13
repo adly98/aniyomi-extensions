@@ -68,7 +68,7 @@ class GetSourcesInterceptor() : Interceptor {
             webView1.webViewClient = object : RequestInspectorWebViewClient(webView1) {
                 override fun shouldInterceptRequest(
                     view: WebView,
-                    webViewRequest: WebViewRequest
+                    webViewRequest: WebViewRequest,
                 ): WebResourceResponse? {
                     val url = webViewRequest.url
                     val types = Regex("""action\d.php""")
