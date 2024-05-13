@@ -15,7 +15,7 @@ data class WebViewRequest(
     val enctype: String?,
     val isForMainFrame: Boolean,
     val isRedirect: Boolean,
-    val hasGesture: Boolean
+    val hasGesture: Boolean,
 ) {
     override fun toString(): String {
         val headersString = headers.entries.joinToString("\n", "\n") { (key, value) ->
@@ -50,7 +50,7 @@ data class WebViewRequest(
     companion object {
         internal fun create(
             webResourceRequest: WebResourceRequest,
-            recordedRequest: RequestInspectorJavaScriptInterface.RecordedRequest?
+            recordedRequest: RequestInspectorJavaScriptInterface.RecordedRequest?,
         ): WebViewRequest {
             val type = recordedRequest?.type ?: WebViewRequestType.HTML
             val url = webResourceRequest.url.toString()
@@ -84,7 +84,7 @@ data class WebViewRequest(
                 isForMainFrame = webResourceRequest.isForMainFrame,
                 isRedirect = isRedirect,
                 hasGesture = webResourceRequest.hasGesture(),
-                formParameters = recordedRequest?.formParameters ?: mapOf()
+                formParameters = recordedRequest?.formParameters ?: mapOf(),
             )
         }
     }

@@ -39,7 +39,7 @@ internal class RequestInspectorJavaScriptInterface(webView: WebView) {
         val formParameters: Map<String, String>,
         val headers: Map<String, String>,
         val trace: String,
-        val enctype: String?
+        val enctype: String?,
     )
 
     @JavascriptInterface
@@ -49,7 +49,7 @@ internal class RequestInspectorJavaScriptInterface(webView: WebView) {
         formParameterList: String,
         headers: String,
         trace: String,
-        enctype: String?
+        enctype: String?,
     ) {
         val formParameterJsonArray = JSONArray(formParameterList)
         val headerMap = getHeadersAsMap(headers)
@@ -87,8 +87,8 @@ internal class RequestInspectorJavaScriptInterface(webView: WebView) {
                 formParameterMap,
                 headerMap,
                 trace,
-                enctype
-            )
+                enctype,
+            ),
         )
     }
 
@@ -105,8 +105,8 @@ internal class RequestInspectorJavaScriptInterface(webView: WebView) {
                 mapOf(),
                 headerMap,
                 trace,
-                null
-            )
+                null,
+            ),
         )
     }
 
@@ -123,8 +123,8 @@ internal class RequestInspectorJavaScriptInterface(webView: WebView) {
                 mapOf(),
                 headerMap,
                 trace,
-                null
-            )
+                null,
+            ),
         )
     }
 
@@ -159,7 +159,6 @@ internal class RequestInspectorJavaScriptInterface(webView: WebView) {
         return map
     }
 
-
     private fun getUrlEncodedFormBody(formParameterJsonArray: JSONArray): String {
         val resultStringBuilder = StringBuilder()
         repeat(formParameterJsonArray.length()) { i ->
@@ -178,8 +177,6 @@ internal class RequestInspectorJavaScriptInterface(webView: WebView) {
                 resultStringBuilder.append("=")
                 resultStringBuilder.append(encodedValue)
             }
-
-
         }
         return resultStringBuilder.toString()
     }
@@ -202,7 +199,6 @@ internal class RequestInspectorJavaScriptInterface(webView: WebView) {
                 resultStringBuilder.append(value)
                 resultStringBuilder.append("\n")
             }
-
         }
         resultStringBuilder.append("--")
         resultStringBuilder.append(MULTIPART_FORM_BOUNDARY)
@@ -227,7 +223,6 @@ internal class RequestInspectorJavaScriptInterface(webView: WebView) {
                 resultStringBuilder.append("=")
                 resultStringBuilder.append(value)
             }
-
         }
         return resultStringBuilder.toString()
     }
@@ -357,7 +352,7 @@ window.fetch = function () {
         fun enabledRequestInspection(webView: WebView, extraJavaScriptToInject: String) {
             webView.evaluateJavascript(
                 "javascript: $JAVASCRIPT_INTERCEPTION_CODE\n$extraJavaScriptToInject",
-                null
+                null,
             )
         }
     }

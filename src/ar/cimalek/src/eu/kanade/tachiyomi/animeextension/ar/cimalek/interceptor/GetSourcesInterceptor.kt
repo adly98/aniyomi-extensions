@@ -10,7 +10,6 @@ import android.webkit.WebView
 import eu.kanade.tachiyomi.network.POST
 import okhttp3.Headers.Companion.toHeaders
 import okhttp3.Interceptor
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
