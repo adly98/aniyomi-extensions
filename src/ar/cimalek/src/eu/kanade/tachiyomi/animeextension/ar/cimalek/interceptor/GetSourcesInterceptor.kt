@@ -75,7 +75,7 @@ class GetSourcesInterceptor(private val client: OkHttpClient) : Interceptor {
                     val types = Regex("""action\d.php""")
                     if (types.containsMatchIn(url)) {
                         val newHeaders = request.requestHeaders.toHeaders()
-                        val newBody = (if(request.hasAjaxData()) request.ajaxData else "").toRequestBody()
+                        val newBody = (if (request.hasAjaxData()) request.ajaxData else "").toRequestBody()
                         newRequest = POST(url, newHeaders, newBody)
                         latch.countDown()
                     }
