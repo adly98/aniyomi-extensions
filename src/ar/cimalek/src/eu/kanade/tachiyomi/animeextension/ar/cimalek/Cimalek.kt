@@ -114,14 +114,12 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val document = response.asJsoup()
         val script = document.selectFirst("script:containsData(dtAjax)")!!.data()
         val version = script.substringAfter("ver\":\"").substringBefore("\"")
-        var index = 0
         return document.select(videoListSelector()).parallelCatchingFlatMapBlocking {
-            index++
-            extractVideos(it, version, index)
+            extractVideos(it, version)
         }
     }
 
-    private fun extractVideos(element: Element, version: String, index: Int): List<Video> {
+    private fun extractVideos(element: Element, version: String): List<Video> {
         fun generateRandomString(length: Int): String {
             val characters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
             val result = StringBuilder(length)
@@ -146,9 +144,9 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val lol = webViewInterceptor.newCall(GET(embedUrl, referer)).execute()
         if (videoRegex.containsMatchIn(lol.request.url.toString())) {
             lol.body.string().substringAfter("#EXT-X-STREAM-INF:").split("#EXT-X-STREAM-INF:").forEach {
-                val quality = it.substringAfter("RESOLUTION=").substringAfter("x").substringBefore(",") + "p"
+                val quality = it.substringAfter("RESOLUTION=").substringBefore("\n").substringAfter("x").substringBefore(",") + "p"
                 val playUrl = it.substringAfter("\n").substringBefore("\n").replace("https", "http")
-                videoList.add(Video(playUrl, "Server $index: $quality", playUrl, headers = referer))
+                videoList.add(Video(playUrl, "${element.attr("data-type")} : $quality", playUrl, headers = referer))
             }
         }
         return videoList
