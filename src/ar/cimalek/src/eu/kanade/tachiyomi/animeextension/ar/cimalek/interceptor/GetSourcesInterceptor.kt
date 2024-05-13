@@ -9,10 +9,10 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import eu.kanade.tachiyomi.network.POST
 import okhttp3.Headers.Companion.toHeaders
-import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -50,7 +50,8 @@ class GetSourcesInterceptor(private val client: OkHttpClient) : Interceptor {
         var webView: WebView? = null
 
         val origRequestUrl = request.url.toString()
-        val headers = request.headers.toMultimap().mapValues { it.value.getOrNull(0) ?: "" }.toMutableMap()
+        val headers =
+            request.headers.toMultimap().mapValues { it.value.getOrNull(0) ?: "" }.toMutableMap()
         var newRequest: Request? = null
 
         handler.post {
@@ -62,7 +63,8 @@ class GetSourcesInterceptor(private val client: OkHttpClient) : Interceptor {
                 databaseEnabled = true
                 useWideViewPort = false
                 loadWithOverviewMode = false
-                userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:94.0) Gecko/20100101 Firefox/94.0"
+                userAgentString =
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:94.0) Gecko/20100101 Firefox/94.0"
             }
             webview.webViewClient = object : WriteHandlingWebViewClient(webview) {
                 override fun shouldInterceptRequest(
