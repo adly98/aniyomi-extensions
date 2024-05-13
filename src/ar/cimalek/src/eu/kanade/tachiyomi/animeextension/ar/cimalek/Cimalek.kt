@@ -152,7 +152,7 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     videoResponse.body.string().substringAfter("#EXT-X-STREAM-INF:").split("#EXT-X-STREAM-INF:").forEach {
                         val quality = it.substringAfter("RESOLUTION=").substringBefore("\n").substringAfter("x").substringBefore(",") + "p"
                         val playUrl = it.substringAfter("\n").substringBefore("\n")
-                        val url = if (playUrl.startsWith("index")) trueVideoUrl.replace("master","index-v1-a1") else playUrl
+                        val url = if (playUrl.startsWith("index")) trueVideoUrl.replace("master", "index-v1-a1") else playUrl
                         videoList.add(Video(url, "${element.text()}: $quality", url, headers = referer))
                     }
                 }
