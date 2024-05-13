@@ -20,7 +20,7 @@ import java.io.IOException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
-class GetSourcesInterceptor(private val client: OkHttpClient) : Interceptor {
+class GetSourcesInterceptor() : Interceptor {
     private val context = Injekt.get<Application>()
     private val handler by lazy { Handler(Looper.getMainLooper()) }
 
@@ -55,9 +55,9 @@ class GetSourcesInterceptor(private val client: OkHttpClient) : Interceptor {
         var newRequest: Request? = null
 
         handler.post {
-            val webview = WebView(context)
-            webView = webview
-            with(webview.settings) {
+            val webView1 = WebView(context)
+            webView = webView1
+            with(webView1.settings) {
                 javaScriptEnabled = true
                 domStorageEnabled = true
                 databaseEnabled = true
@@ -66,20 +66,20 @@ class GetSourcesInterceptor(private val client: OkHttpClient) : Interceptor {
                 userAgentString =
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:94.0) Gecko/20100101 Firefox/94.0"
             }
-            webview.webViewClient = object : WriteHandlingWebViewClient(webview) {
+            webView1.webViewClient = object : RequestInspectorWebViewClient(webView1) {
                 override fun shouldInterceptRequest(
                     view: WebView,
-                    request: WriteHandlingWebResourceRequest,
+                    webViewRequest: WebViewRequest
                 ): WebResourceResponse? {
-                    val url = request.url.toString()
+                    val url = webViewRequest.url
                     val types = Regex("""action\d.php""")
                     if (types.containsMatchIn(url)) {
-                        val newHeaders = request.requestHeaders.toHeaders()
-                        val newBody = (if (request.hasAjaxData()) request.ajaxData else "").toRequestBody()
+                        val newHeaders = webViewRequest.headers.toHeaders()
+                        val newBody = webViewRequest.body.toRequestBody()
                         newRequest = POST(url, newHeaders, newBody)
                         latch.countDown()
                     }
-                    return super.shouldInterceptRequest(view, request)
+                    return super.shouldInterceptRequest(view, webViewRequest)
                 }
             }
 
