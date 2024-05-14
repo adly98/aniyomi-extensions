@@ -143,18 +143,16 @@ class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val webViewInterceptor = client.newBuilder().addInterceptor(GetSourcesInterceptor(videoRegex)).build()
         val videoResponse = webViewInterceptor.newCall(GET(embedUrl, referer)).execute()
         val trueVideoUrl = videoResponse.request.url.toString()
-        if (videoRegex.containsMatchIn(trueVideoUrl)) {
-            when {
-                "index-v1-a1.m3u8" in trueVideoUrl || "list.m3u8" in trueVideoUrl -> {
-                    videoList.add(Video(trueVideoUrl, element.text(), trueVideoUrl, headers = referer))
-                }
-                "master.m3u8" in trueVideoUrl -> {
-                    videoResponse.body.string().substringAfter("#EXT-X-STREAM-INF:").split("#EXT-X-STREAM-INF:").forEach {
-                        val quality = it.substringAfter("RESOLUTION=").substringBefore("\n").substringAfter("x").substringBefore(",") + "p"
-                        val playUrl = it.substringAfter("\n").substringBefore("\n")
-                        val url = if (playUrl.startsWith("index")) trueVideoUrl.replace("master", "index-v1-a1") else playUrl
-                        videoList.add(Video(url, "${element.text()}: $quality", url, headers = referer))
-                    }
+        when {
+            "index-v1-a1.m3u8" in trueVideoUrl || "list.m3u8" in trueVideoUrl -> {
+                videoList.add(Video(trueVideoUrl, element.text(), trueVideoUrl, headers = referer))
+            }
+            "master.m3u8" in trueVideoUrl -> {
+                videoResponse.body.string().substringAfter("#EXT-X-STREAM-INF:").split("#EXT-X-STREAM-INF:").forEach {
+                    val quality = it.substringAfter("RESOLUTION=").substringBefore("\n").substringAfter("x").substringBefore(",") + "p"
+                    val playUrl = it.substringAfter("\n").substringBefore("\n")
+                    val url = if (playUrl.startsWith("index")) trueVideoUrl.replace("master", "index-v1-a1") else playUrl
+                    videoList.add(Video(url, "${element.text()}: $quality", url, headers = referer))
                 }
             }
         }
