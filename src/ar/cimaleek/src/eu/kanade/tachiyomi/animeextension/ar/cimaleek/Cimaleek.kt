@@ -1,4 +1,4 @@
-package eu.kanade.tachiyomi.animeextension.ar.cimalek
+package eu.kanade.tachiyomi.animeextension.ar.cimaleek
 
 import android.app.Application
 import android.content.SharedPreferences
@@ -23,9 +23,9 @@ import org.jsoup.nodes.Element
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
-class Cimalek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
+class Cimaleek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
-    override val name = "Cimalek"
+    override val name = "CimaLeek"
 
     override val baseUrl = "https://m.cimaleek.to"
 

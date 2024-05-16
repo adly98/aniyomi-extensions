@@ -1,6 +1,6 @@
 ext {
-    extName = 'Cimalek'
-    extClass = '.Cimalek'
+    extName = 'Cimaleek'
+    extClass = '.Cimaleek'
     extVersionCode = 1
 }
 

@@ -1,4 +1,4 @@
-package eu.kanade.tachiyomi.animeextension.ar.cimalek.interceptor
+package eu.kanade.tachiyomi.animeextension.ar.cimaleek.interceptor
 
 import android.annotation.SuppressLint
 import android.app.Application
