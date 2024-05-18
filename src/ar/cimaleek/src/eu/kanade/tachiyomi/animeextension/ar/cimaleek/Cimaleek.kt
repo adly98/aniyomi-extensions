@@ -25,7 +25,7 @@ import uy.kohesive.injekt.api.get
 
 class Cimaleek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
-    override val name = "CimaLeek"
+    override val name = "سيما ليك"
 
     override val baseUrl = "https://m.cimaleek.to"
 
