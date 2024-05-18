@@ -159,6 +159,13 @@ class Cimaleek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return videoList
     }
 
+    override fun List<Video>.sort(): List<Video> {
+        val quality = preferences.getString("preferred_quality", "1080")!!
+        return sortedWith(
+            compareBy { it.quality.contains(quality) },
+        ).reversed()
+    }
+
     // =============================== Search ===============================
     override fun searchAnimeFromElement(element: Element): SAnime = popularAnimeFromElement(element)
 
