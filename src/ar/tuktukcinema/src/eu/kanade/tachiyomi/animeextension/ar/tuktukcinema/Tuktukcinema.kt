@@ -4,7 +4,7 @@ import android.app.Application
 import android.content.SharedPreferences
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
-import dev.datlag.jsunpacker.JsUnpacker
+import eu.kanade.tachiyomi.animeextension.ar.tuktukcinema.dto.IFrameResponse
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilter
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
@@ -14,19 +14,20 @@ import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.lib.doodextractor.DoodExtractor
 import eu.kanade.tachiyomi.lib.okruextractor.OkruExtractor
-import eu.kanade.tachiyomi.lib.playlistutils.PlaylistUtils
-import eu.kanade.tachiyomi.lib.streamtapeextractor.StreamTapeExtractor
-import eu.kanade.tachiyomi.lib.uqloadextractor.UqloadExtractor
+import eu.kanade.tachiyomi.lib.mixdropextractor.MixDropExtractor
 import eu.kanade.tachiyomi.lib.vidbomextractor.VidBomExtractor
+import eu.kanade.tachiyomi.lib.streamwishextractor.StreamWishExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
 import eu.kanade.tachiyomi.util.parallelCatchingFlatMapBlocking
+import kotlinx.serialization.json.Json
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import uy.kohesive.injekt.injectLazy
 
 class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
@@ -39,6 +40,8 @@ class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override val lang = "ar"
 
     override val supportsLatest = true
+
+    private val json: Json by injectLazy()
 
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
@@ -156,8 +159,13 @@ class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     add("X-Inertia-Version", "933f5361ce18c71b82fa342f88de9634")
                     add("X-Requested-With", "XMLHttpRequest")
                 }.build()
-                val jsonData = client.newCall(GET(url, newHeaders)).execute().body.string()
-                videosFromMain(url)
+                val encodedData = client.newCall(GET(url, newHeaders)).execute().body.string()
+                val jsonData = json.decodeFromString<IFrameResponse>(encodedData)
+                jsonData.props.streams.data.parallelCatchingFlatMapBlocking { data ->
+                    data.mirrors.parallelCatchingFlatMapBlocking { mirror ->
+                        extractVideos(mirror.link, mirror.driver)
+                    }
+                }
             }
             else -> {
                 extractVideos(url, txt)
@@ -166,26 +174,20 @@ class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
     private fun extractVideos(url: String, txt: String): List<Video> {
         return when {
-            "Main" in txt -> {
-                videosFromMain(url)
-            }
-            url.contains("ok") -> {
+            url.contains("ok.ru") -> {
                 OkruExtractor(client).videosFromUrl(url)
             }
             "Vidbom" in txt || "Vidshare" in txt || "Govid" in txt -> {
                 VidBomExtractor(client).videosFromUrl(url)
             }
-            "Doodstream" in txt -> {
+            "dood" in txt -> {
                 DoodExtractor(client).videoFromUrl(url, "Dood mirror")?.let(::listOf)
             }
-            url.contains("uqload") -> {
-                UqloadExtractor(client).videosFromUrl(url, "mirror")
+            "Upstream" in txt || "streamwish" in txt || "vidhide" in txt -> {
+                StreamWishExtractor(client, headers).videosFromUrl(url, txt)
             }
-            url.contains("tape") -> {
-                StreamTapeExtractor(client).videoFromUrl(url)?.let(::listOf)
-            }
-            "Upstream" in txt || "Streamruby" in txt || "Streamwish" in txt -> {
-                videosFromOthers(url, txt)
+            "mixdrop" in txt -> {
+                MixDropExtractor(client).videosFromUrl(url)
             }
             else -> null
         } ?: emptyList()
@@ -202,18 +204,6 @@ class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun videoFromElement(element: Element) = throw UnsupportedOperationException()
 
-    private fun videosFromMain(url: String): List<Video> {
-        val jsE = client.newCall(GET(url)).execute().asJsoup().selectFirst("script:containsData(player)")!!.data()
-        val fileLinks = JsUnpacker.unpackAndCombine(jsE)!!.substringAfter("file").substringBefore("\",")
-        return Regex("\\[(.*?)](.*?mp4)").findAll(fileLinks).map {
-            Video(it.groupValues[2], "Main: " + it.groupValues[1], it.groupValues[2])
-        }.toList()
-    }
-    private fun videosFromOthers(url: String, prefix: String): List<Video> {
-        val jsE = client.newCall(GET(url)).execute().asJsoup().selectFirst("script:containsData(source)")!!.data()
-        val masterUrl = JsUnpacker.unpackAndCombine(jsE)!!.substringAfter("file").substringAfter("\"").substringBefore("\"")
-        return PlaylistUtils(client).extractFromHls(masterUrl, url, videoNameGen = { "$prefix - $it" })
-    }
     // ============================ search ============================
 
     override fun searchAnimeSelector(): String = "div.Block--Item"
