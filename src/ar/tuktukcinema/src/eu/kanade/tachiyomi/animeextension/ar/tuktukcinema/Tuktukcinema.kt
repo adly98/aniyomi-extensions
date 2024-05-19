@@ -140,12 +140,31 @@ class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
         return document.select(videoListSelector())
-            .parallelCatchingFlatMapBlocking(::extractVideos)
+            .parallelCatchingFlatMapBlocking(::videosFromElement)
     }
 
-    private fun extractVideos(element: Element): List<Video> {
+    private fun videosFromElement(element: Element): List<Video> {
         val url = element.attr("data-link")
         val txt = element.text()
+        return when {
+            "TukTuk" in txt -> {
+                val newHeaders = headers.newBuilder().apply {
+                    add("Referer", "$baseUrl/")
+                    add("X-Inertia", "true")
+                    add("X-Inertia-Partial-Component", "files/mirror/video")
+                    add("X-Inertia-Partial-Data", "streams")
+                    add("X-Inertia-Version", "933f5361ce18c71b82fa342f88de9634")
+                    add("X-Requested-With", "XMLHttpRequest")
+                }.build()
+                val jsonData = client.newCall(GET(url, newHeaders)).execute().body.string()
+                videosFromMain(url)
+            }
+            else -> {
+                extractVideos(url, txt)
+            }
+        }
+    }
+    private fun extractVideos(url: String, txt: String): List<Video> {
         return when {
             "Main" in txt -> {
                 videosFromMain(url)
@@ -186,7 +205,7 @@ class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     private fun videosFromMain(url: String): List<Video> {
         val jsE = client.newCall(GET(url)).execute().asJsoup().selectFirst("script:containsData(player)")!!.data()
         val fileLinks = JsUnpacker.unpackAndCombine(jsE)!!.substringAfter("file").substringBefore("\",")
-        return Regex("\\[(.*?)\\](.*?mp4)").findAll(fileLinks).map {
+        return Regex("\\[(.*?)](.*?mp4)").findAll(fileLinks).map {
             Video(it.groupValues[2], "Main: " + it.groupValues[1], it.groupValues[2])
         }.toList()
     }
