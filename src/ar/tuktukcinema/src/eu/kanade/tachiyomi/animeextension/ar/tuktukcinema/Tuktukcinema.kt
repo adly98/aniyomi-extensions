@@ -14,6 +14,7 @@ import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.lib.doodextractor.DoodExtractor
 import eu.kanade.tachiyomi.lib.okruextractor.OkruExtractor
+import eu.kanade.tachiyomi.lib.mp4uploadextractor.Mp4uploadExtractor
 import eu.kanade.tachiyomi.lib.mixdropextractor.MixDropExtractor
 import eu.kanade.tachiyomi.lib.vidbomextractor.VidBomExtractor
 import eu.kanade.tachiyomi.lib.streamwishextractor.StreamWishExtractor
@@ -182,6 +183,9 @@ class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             }
             "dood" in txt -> {
                 DoodExtractor(client).videoFromUrl(url, "Dood mirror")?.let(::listOf)
+            }
+            "mp4" in txt -> {
+                Mp4uploadExtractor(client).videosFromUrl(url, headers)
             }
             "Upstream" in txt || "streamwish" in txt || "vidhide" in txt -> {
                 StreamWishExtractor(client, headers).videosFromUrl(url, txt)
