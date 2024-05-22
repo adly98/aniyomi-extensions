@@ -9,18 +9,19 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import eu.kanade.tachiyomi.network.GET
-import okhttp3.Headers.Companion.toHeaders
+import okhttp3.Headers
 import okhttp3.Interceptor
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.IOException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
-class GetSourcesInterceptor(private val searchRegex: Regex) : Interceptor {
+class GetSourcesInterceptor(private val searchRegex: Regex, private val globalHeaders: Headers) : Interceptor {
     private val context = Injekt.get<Application>()
     private val handler by lazy { Handler(Looper.getMainLooper()) }
 
@@ -35,23 +36,24 @@ class GetSourcesInterceptor(private val searchRegex: Regex) : Interceptor {
         val request = chain.request()
 
         try {
-            val newRequest = resolveWithWebView(request)
-
-            return chain.proceed(newRequest ?: request)
+            val matchedUrl = resolveWithWebView(request)
+            return Response.Builder()
+                .body(matchedUrl.toResponseBody("text/html".toMediaType()))
+                .build()
         } catch (e: Exception) {
             throw IOException(e)
         }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun resolveWithWebView(request: Request): Request? {
+    private fun resolveWithWebView(request: Request): String {
         val latch = CountDownLatch(1)
 
         var webView: WebView? = null
 
         val origRequestUrl = request.url.toString()
         val headers = request.headers.toMultimap().mapValues { it.value.getOrNull(0) ?: "" }.toMutableMap()
-        var newRequest: Request? = null
+        var matchedUrl: String? = null
 
         handler.post {
             val webview = WebView(context)
@@ -62,7 +64,7 @@ class GetSourcesInterceptor(private val searchRegex: Regex) : Interceptor {
                 databaseEnabled = true
                 useWideViewPort = false
                 loadWithOverviewMode = false
-                userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:94.0) Gecko/20100101 Firefox/94.0"
+                userAgentString = globalHeaders["User-Agent"]
             }
             webview.webViewClient = object : WebViewClient() {
                 override fun shouldInterceptRequest(
@@ -71,8 +73,7 @@ class GetSourcesInterceptor(private val searchRegex: Regex) : Interceptor {
                 ): WebResourceResponse? {
                     val url = request.url.toString()
                     if (searchRegex.containsMatchIn(url)) {
-                        val newHeaders = request.requestHeaders.toHeaders()
-                        newRequest = GET(url, newHeaders)
+                        matchedUrl = url
                         latch.countDown()
                     }
                     return super.shouldInterceptRequest(view, request)
@@ -89,7 +90,7 @@ class GetSourcesInterceptor(private val searchRegex: Regex) : Interceptor {
             webView?.destroy()
             webView = null
         }
-        return newRequest
+        return matchedUrl ?: ""
     }
 
     companion object {

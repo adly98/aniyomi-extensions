@@ -37,6 +37,8 @@ class Cimaleek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
     }
 
+    private val interceptor by lazy { GetSourcesInterceptor(VIDEO_REGEX, headers) }
+
     // ============================== Popular ===============================
     override fun popularAnimeFromElement(element: Element): SAnime {
         val anime = SAnime.create()
@@ -48,7 +50,7 @@ class Cimaleek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun popularAnimeNextPageSelector(): String = "div.pagination div.pagination-num i#nextpagination"
 
-    override fun popularAnimeRequest(page: Int): Request = GET("$baseUrl/trending/page/$page/")
+    override fun popularAnimeRequest(page: Int): Request = GET("$baseUrl/trending/page/$page/", headers)
 
     override fun popularAnimeSelector(): String = "div.film_list-wrap div.item"
 
@@ -119,30 +121,32 @@ class Cimaleek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }
     }
 
-    private fun extractVideos(element: Element, version: String): List<Video> {
-        fun generateRandomString(length: Int): String {
-            val characters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-            val result = StringBuilder(length)
-            for (i in 0 until length) {
-                val randomIndex = (Math.random() * characters.length).toInt()
-                result.append(characters[randomIndex])
-            }
-            return result.toString()
+    private fun generateRandomString(): String {
+        val characters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        val result = StringBuilder(16)
+        for (i in 0 until 16) {
+            val randomIndex = (Math.random() * characters.length).toInt()
+            result.append(characters[randomIndex])
         }
+        return result.toString()
+    }
+
+    private fun extractVideos(element: Element, version: String): List<Video> {
         val videoList = mutableListOf<Video>()
         val videoUrl = "$baseUrl/wp-json/lalaplayer/v2/".toHttpUrlOrNull()!!.newBuilder()
         videoUrl.addQueryParameter("p", element.attr("data-post"))
         videoUrl.addQueryParameter("t", element.attr("data-type"))
         videoUrl.addQueryParameter("n", element.attr("data-nume"))
         videoUrl.addQueryParameter("ver", version)
-        videoUrl.addQueryParameter("rand", generateRandomString(16))
+        videoUrl.addQueryParameter("rand", generateRandomString())
         val videoFrame = client.newCall(GET(videoUrl.toString())).execute().body.string()
         val embedUrl = videoFrame.substringAfter("embed_url\":\"").substringBefore("\"")
         val referer = headers.newBuilder().add("Referer", "$baseUrl/").build()
-        val videoRegex = Regex("""m3u8|.mp4""")
-        val webViewInterceptor = client.newBuilder().addInterceptor(GetSourcesInterceptor(videoRegex)).build()
+        val webViewInterceptor = client.newBuilder().addInterceptor(interceptor).build()
         val videoResponse = webViewInterceptor.newCall(GET(embedUrl, referer)).execute()
-        val trueVideoUrl = videoResponse.request.url.toString()
+        videoList.add(Video("http://", videoResponse.body.string(), "http://", headers = referer))
+
+        /* val trueVideoUrl = videoResponse.request.url.toString()
         when {
             "index-v1-a1.m3u8" in trueVideoUrl || "list.m3u8" in trueVideoUrl || ".mp4" in trueVideoUrl -> {
                 videoList.add(Video(trueVideoUrl, element.text(), trueVideoUrl, headers = referer))
@@ -155,7 +159,7 @@ class Cimaleek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     videoList.add(Video(url, "${element.text()}: $quality", url, headers = referer))
                 }
             }
-        }
+        } */
         return videoList
     }
 
@@ -256,7 +260,7 @@ class Cimaleek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun latestUpdatesNextPageSelector(): String = popularAnimeNextPageSelector()
 
-    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/recent/page/$page/")
+    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/recent/page/$page/", headers)
 
     override fun latestUpdatesSelector(): String = popularAnimeSelector()
 
@@ -280,26 +284,7 @@ class Cimaleek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         screen.addPreference(videoQualityPref)
     }
 
-    // =============================== Utilities ===============================
-    private fun titleEdit(title: String, details: Boolean = false): String {
-        return if (Regex("(?:فيلم|عرض)\\s(.*\\s[0-9]+)\\s(.+?)\\s").containsMatchIn(title)) {
-            val titleGroup = Regex("(?:فيلم|عرض)\\s(.*\\s[0-9]+)\\s(.+?)\\s").find(title)
-            val movieName = titleGroup!!.groupValues[1]
-            val type = titleGroup.groupValues[2]
-            movieName + if (details) " ($type)" else ""
-        } else if (Regex("(?:مسلسل|برنامج|انمي)\\s(.+)\\sالحلقة\\s(\\d+)").containsMatchIn(title)) {
-            val titleGroup = Regex("(?:مسلسل|برنامج|انمي)\\s(.+)\\sالحلقة\\s(\\d+)").find(title)
-            val seriesName = titleGroup!!.groupValues[1]
-            val epNum = titleGroup.groupValues[2]
-            if (details) {
-                "$seriesName (ep:$epNum)"
-            } else if (seriesName.contains("الموسم")) {
-                seriesName.split("الموسم")[0].trim()
-            } else {
-                seriesName
-            }
-        } else {
-            title
-        }
+    companion object {
+        private val VIDEO_REGEX by lazy { Regex("""m3u8|.mp4""") }
     }
 }
