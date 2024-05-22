@@ -37,8 +37,8 @@ class GetSourcesInterceptor(private val searchRegex: Regex, private val globalHe
 
         try {
             val matchedUrl = resolveWithWebView(request)
-            return Response.Builder()
-                .body(matchedUrl.toResponseBody("text/html".toMediaType()))
+            return Response.Builder().headers(request.headers)
+                .body(matchedUrl.toResponseBody("text/plain".toMediaType()))
                 .build()
         } catch (e: Exception) {
             throw IOException(e)
