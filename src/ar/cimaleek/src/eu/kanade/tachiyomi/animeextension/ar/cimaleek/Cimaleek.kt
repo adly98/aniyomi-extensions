@@ -4,7 +4,7 @@ import android.app.Application
 import android.content.SharedPreferences
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
-import eu.kanade.tachiyomi.animeextension.ar.cimaleek.interceptor.GetSourcesInterceptor
+import eu.kanade.tachiyomi.animeextension.ar.cimaleek.interceptor.WebViewResolver
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilter
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
@@ -37,7 +37,7 @@ class Cimaleek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
     }
 
-    private val interceptor by lazy { GetSourcesInterceptor(VIDEO_REGEX, headers) }
+    private val WebViewResolver by lazy { WebViewResolver(VIDEO_REGEX, headers) }
 
     // ============================== Popular ===============================
     override fun popularAnimeFromElement(element: Element): SAnime {
@@ -142,9 +142,8 @@ class Cimaleek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val videoFrame = client.newCall(GET(videoUrl.toString())).execute().body.string()
         val embedUrl = videoFrame.substringAfter("embed_url\":\"").substringBefore("\"")
         val referer = headers.newBuilder().add("Referer", "$baseUrl/").build()
-        val webViewInterceptor = client.newBuilder().addInterceptor(interceptor).build()
-        val videoResponse = webViewInterceptor.newCall(GET(embedUrl, referer)).execute().body.string()
-        videoList.add(Video(videoResponse, videoResponse, videoResponse, headers = referer))
+        val webViewResult = WebViewResolver.getUrl(GET(embedUrl, referer))!!
+        videoList.add(Video(webViewResult, webViewResult, webViewResult, headers = referer))
 
         /* val trueVideoUrl = videoResponse.request.url.toString()
         when {
