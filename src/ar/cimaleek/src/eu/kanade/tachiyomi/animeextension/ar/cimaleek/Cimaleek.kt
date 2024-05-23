@@ -37,7 +37,7 @@ class Cimaleek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
     }
 
-    private val WebViewResolver by lazy { WebViewResolver(VIDEO_REGEX, headers) }
+    private val webViewResolver by lazy { WebViewResolver(VIDEO_REGEX, headers) }
 
     // ============================== Popular ===============================
     override fun popularAnimeFromElement(element: Element): SAnime {
@@ -142,7 +142,7 @@ class Cimaleek : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val videoFrame = client.newCall(GET(videoUrl.toString())).execute().body.string()
         val embedUrl = videoFrame.substringAfter("embed_url\":\"").substringBefore("\"")
         val referer = headers.newBuilder().add("Referer", "$baseUrl/").build()
-        val webViewResult = WebViewResolver.getUrl(GET(embedUrl, referer))!!
+        val webViewResult = webViewResolver.getUrl(GET(embedUrl, referer))!!
         videoList.add(Video(webViewResult, webViewResult, webViewResult, headers = referer))
 
         /* val trueVideoUrl = videoResponse.request.url.toString()
