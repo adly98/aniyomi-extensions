@@ -162,13 +162,12 @@ class Tuktuk : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     add("X-Requested-With", "XMLHttpRequest")
                 }.build()
                 val encodedData = client.newCall(GET(url, newHeaders)).execute().body.string()
-                // val jsonData = json.decodeFromString<IFrameResponse>(encodedData)
-                Video(encodedData, encodedData, encodedData).let(::listOf)
-                // jsonData.props.streams.data.parallelCatchingFlatMapBlocking { data ->
-                //    data.mirrors.parallelCatchingFlatMapBlocking { mirror ->
-                //        extractVideos(mirror.link, mirror.driver)
-                //    }
-                // }
+                val jsonData = json.decodeFromString<IFrameResponse>(encodedData)
+                jsonData.props.streams.data.parallelCatchingFlatMapBlocking { data ->
+                    data.mirrors.parallelCatchingFlatMapBlocking { mirror ->
+                        extractVideos("https:" + mirror.link, mirror.driver)
+                    }
+                }
             }
             else -> {
                 extractVideos(url, txt)
