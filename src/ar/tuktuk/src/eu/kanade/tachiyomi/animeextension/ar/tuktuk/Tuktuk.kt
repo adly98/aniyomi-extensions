@@ -162,12 +162,13 @@ class Tuktuk : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     add("X-Inertia-Version", "933f5361ce18c71b82fa342f88de9634")
                     add("X-Requested-With", "XMLHttpRequest")
                 }.build()
-                val encodedData = client.newCall(GET(url, newHeaders)).execute().body.string()
-                val jsonData = json.decodeFromString<IFrameResponse>(encodedData)
-                jsonData.props.streams.data.parallelCatchingFlatMapBlocking { data ->
-                    data.mirrors.parallelCatchingFlatMapBlocking { mirror ->
-                        extractVideos("https:" + mirror.link, mirror.driver)
+                val jsonData = client.newCall(GET(url, newHeaders)).execute().body.string()
+                if (MIRROR_REGEX.containsMatchIn(jsonData)) {
+                    MIRROR_REGEX.findAll(jsonData).toList().parallelCatchingFlatMapBlocking {
+                        extractVideos("https:" + it.groupValues[2], it.groupValues[1])
                     }
+                } else {
+                    emptyList()
                 }
             }
             else -> {
@@ -327,5 +328,8 @@ class Tuktuk : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             }
         }
         screen.addPreference(videoQualityPref)
+    }
+    companion object {
+        private val MIRROR_REGEX by lazy { Regex("""\{"driver":"(.*?)","link":"(.*?)",""") }
     }
 }
