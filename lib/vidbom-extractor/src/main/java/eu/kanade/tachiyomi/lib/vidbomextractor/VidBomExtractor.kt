@@ -7,7 +7,7 @@ import okhttp3.Headers
 import okhttp3.OkHttpClient
 
 class VidBomExtractor(private val client: OkHttpClient) {
-    fun videosFromUrl(url: String, private val headers: Headers): List<Video> {
+    fun videosFromUrl(url: String, headers: Headers): List<Video> {
         val doc = client.newCall(GET(url, headers)).execute().asJsoup()
         val script = doc.selectFirst("script:containsData(sources)")!!
         val data = script.data().substringAfter("sources: [").substringBefore("],")
