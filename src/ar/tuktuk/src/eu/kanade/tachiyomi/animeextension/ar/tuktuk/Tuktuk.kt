@@ -325,6 +325,6 @@ class Tuktuk : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         screen.addPreference(videoQualityPref)
     }
     companion object {
-        private val MIRROR_REGEX by lazy { Regex("""\{"driver":"(.*?)","link":"(.*?)",""") }
+        private val MIRROR_REGEX by lazy { Regex("\"driver\":\"(.*?)\",\"link\":\"(.*?)\",") }
     }
 }
