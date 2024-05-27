@@ -151,8 +151,7 @@ class Tuktuk : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     private fun videosFromElement(element: Element): List<Video> {
         val url = element.attr("data-link")
         val txt = element.text()
-        return extractVideos(url, txt)
-        /* return when {
+        return when {
             "iframe" in url -> {
                 val newHeaders = headers.newBuilder().apply {
                     add("Referer", "$baseUrl/")
@@ -163,7 +162,7 @@ class Tuktuk : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     add("X-Requested-With", "XMLHttpRequest")
                 }.build()
                 val encodedData = client.newCall(GET(url, newHeaders)).execute().body.string()
-                val jsonData = json.decodeFromString<IFrameResponse>(encodedData)
+                // val jsonData = json.decodeFromString<IFrameResponse>(encodedData)
                 Video(encodedData, encodedData, encodedData).let(::listOf)
                 // jsonData.props.streams.data.parallelCatchingFlatMapBlocking { data ->
                 //    data.mirrors.parallelCatchingFlatMapBlocking { mirror ->
@@ -174,7 +173,7 @@ class Tuktuk : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             else -> {
                 extractVideos(url, txt)
             }
-        } */
+        }
     }
     private val vidBomExtractor by lazy { VidBomExtractor(client) }
     private val okruExtractor by lazy { OkruExtractor(client) }
@@ -189,7 +188,7 @@ class Tuktuk : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 okruExtractor.videosFromUrl(url)
             }
             "Vidbom" in txt || "Vidshare" in txt || "Govid" in txt -> {
-                vidBomExtractor.videosFromUrl(url, headers)
+                vidBomExtractor.videosFromUrl(url, headers, txt)
             }
             "dood" in txt -> {
                 doodExtractor.videoFromUrl(url, "Dood mirror")?.let(::listOf)
