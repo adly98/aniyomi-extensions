@@ -21,6 +21,7 @@ import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
 import eu.kanade.tachiyomi.util.parallelCatchingFlatMapBlocking
 import kotlinx.serialization.json.Json
+import okhttp3.Headers
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
@@ -45,6 +46,11 @@ class Tuktuk : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
+    }
+
+    override fun headersBuilder(): Headers.Builder {
+        return super.headersBuilder()
+            .add("Referer", baseUrl)
     }
 
     // ============================ popular ===============================
@@ -131,11 +137,7 @@ class Tuktuk : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     // ============================ video links ============================
     override fun videoListRequest(episode: SEpisode): Request {
-        val refererHeaders = headers.newBuilder().apply {
-            add("Referer", "$baseUrl/")
-        }.build()
-
-        return GET("$baseUrl/${episode.url}", headers = refererHeaders)
+        return GET("$baseUrl/${episode.url}", headers)
     }
 
     override fun videoListSelector() = "div.watch--servers--list ul li.server--item"
@@ -149,7 +151,7 @@ class Tuktuk : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     private fun videosFromElement(element: Element): List<Video> {
         val url = element.attr("data-link")
         val txt = element.text()
-        return Video(url, url, url).let(::listOf)
+        return extractVideos(url, txt)
         /* return when {
             "iframe" in url -> {
                 val newHeaders = headers.newBuilder().apply {
@@ -183,11 +185,11 @@ class Tuktuk : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     private fun extractVideos(url: String, txt: String): List<Video> {
         return when {
-            url.contains("ok.ru") -> {
+            "ok.ru" in url -> {
                 okruExtractor.videosFromUrl(url)
             }
             "Vidbom" in txt || "Vidshare" in txt || "Govid" in txt -> {
-                vidBomExtractor.videosFromUrl(url)
+                vidBomExtractor.videosFromUrl(url, headers)
             }
             "dood" in txt -> {
                 doodExtractor.videoFromUrl(url, "Dood mirror")?.let(::listOf)
