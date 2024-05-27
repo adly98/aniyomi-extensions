@@ -4,7 +4,6 @@ import android.app.Application
 import android.content.SharedPreferences
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
-import eu.kanade.tachiyomi.animeextension.ar.tuktukcinema.dto.IFrameResponse
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilter
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
@@ -21,7 +20,6 @@ import eu.kanade.tachiyomi.lib.vidbomextractor.VidBomExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
 import eu.kanade.tachiyomi.util.parallelCatchingFlatMapBlocking
-import kotlinx.serialization.json.Json
 import okhttp3.Headers
 import okhttp3.Request
 import okhttp3.Response
@@ -29,7 +27,6 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import uy.kohesive.injekt.injectLazy
 
 class Tuktuk : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
@@ -42,8 +39,6 @@ class Tuktuk : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override val lang = "ar"
 
     override val supportsLatest = true
-
-    private val json: Json by injectLazy()
 
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
@@ -165,7 +160,7 @@ class Tuktuk : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 val jsonData = client.newCall(GET(url, newHeaders)).execute().body.string()
                 if (MIRROR_REGEX.containsMatchIn(jsonData)) {
                     MIRROR_REGEX.findAll(jsonData).toList().parallelCatchingFlatMapBlocking {
-                        extractVideos("https:" + it.groupValues[2], it.groupValues[1])
+                        extractVideos("https:" + it.groupValues[2].replace("\\", ""), it.groupValues[1])
                     }
                 } else {
                     emptyList()
