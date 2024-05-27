@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.SharedPreferences
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
+import eu.kanade.tachiyomi.animeextension.ar.tuktuk.dto.IFrameResponse
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilter
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
@@ -20,6 +21,7 @@ import eu.kanade.tachiyomi.lib.vidbomextractor.VidBomExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
 import eu.kanade.tachiyomi.util.parallelCatchingFlatMapBlocking
+import kotlinx.serialization.json.Json
 import okhttp3.Headers
 import okhttp3.Request
 import okhttp3.Response
@@ -27,6 +29,7 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import uy.kohesive.injekt.injectLazy
 
 class Tuktuk : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
@@ -39,6 +42,8 @@ class Tuktuk : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override val lang = "ar"
 
     override val supportsLatest = true
+
+    private val json: Json by injectLazy()
 
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
@@ -157,13 +162,12 @@ class Tuktuk : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     add("X-Inertia-Version", "933f5361ce18c71b82fa342f88de9634")
                     add("X-Requested-With", "XMLHttpRequest")
                 }.build()
-                val jsonData = client.newCall(GET(url, newHeaders)).execute().body.string()
-                if (MIRROR_REGEX.containsMatchIn(jsonData)) {
-                    MIRROR_REGEX.findAll(jsonData).toList().parallelCatchingFlatMapBlocking {
-                        extractVideos("https:" + it.groupValues[2].replace("\\", ""), it.groupValues[1])
+                val encodedData = client.newCall(GET(url, newHeaders)).execute().body.string()
+                val jsonData = json.decodeFromString<IFrameResponse>(encodedData)
+                jsonData.props.streams.data.parallelCatchingFlatMapBlocking { data ->
+                    data.mirrors.parallelCatchingFlatMapBlocking { mirror ->
+                        extractVideos("https:" + mirror.link.replace("\\", ""), mirror.driver)
                     }
-                } else {
-                    emptyList()
                 }
             }
             else -> {
@@ -323,8 +327,5 @@ class Tuktuk : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             }
         }
         screen.addPreference(videoQualityPref)
-    }
-    companion object {
-        private val MIRROR_REGEX by lazy { Regex("\"driver\":\"(.*?)\",\"link\":\"(.*?)\",") }
     }
 }

@@ -1,4 +1,4 @@
-package eu.kanade.tachiyomi.animeextension.ar.tuktukcinema.dto
+package eu.kanade.tachiyomi.animeextension.ar.tuktuk.dto
 
 import kotlinx.serialization.Serializable
 
