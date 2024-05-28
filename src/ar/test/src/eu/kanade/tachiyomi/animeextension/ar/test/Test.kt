@@ -11,6 +11,11 @@ import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
+import eu.kanade.tachiyomi.lib.doodextractor.DoodExtractor
+import eu.kanade.tachiyomi.lib.mixdropextractor.MixDropExtractor
+import eu.kanade.tachiyomi.lib.mp4uploadextractor.Mp4uploadExtractor
+import eu.kanade.tachiyomi.lib.okruextractor.OkruExtractor
+import eu.kanade.tachiyomi.lib.streamwishextractor.StreamWishExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -97,14 +102,34 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
-        return if (document.select(videoListSelector()).isNullOrEmpty()) {
-            Video("http://", "No video found", "http://").let(::listOf)
-        } else {
-            document.select(videoListSelector()).map {
-                val url = it.absUrl("data-link")
-                // val txt = it.text()
-                Video(url, url, url)
+        return document.select(videoListSelector()).flatMap {
+            val url = it.absUrl("data-link")
+            val txt = it.text()
+            extractVideos(url, txt)
+        }
+    }
+
+    private fun extractVideos(url: String, server: String): List<Video> {
+        return when {
+            "ok.ru" in url -> {
+                OkruExtractor(client).videosFromUrl(url)
             }
+            "Vidbom" in server || "Vidshare" in server || "Govid" in server -> {
+                Video(url, "$server: $url", url).let(::listOf)
+            }
+            "dood" in server -> {
+                DoodExtractor(client).videoFromUrl(url, "Dood mirror")?.let(::listOf) ?: emptyList()
+            }
+            "mp4" in server -> {
+                Mp4uploadExtractor(client).videosFromUrl(url, headers)
+            }
+            "Upstream" in server || "streamwish" in server || "vidhide" in server -> {
+                StreamWishExtractor(client, headers).videosFromUrl(url, server)
+            }
+            "mixdrop" in server -> {
+                MixDropExtractor(client).videosFromUrl(url)
+            }
+            else -> Video(url, "can't resolver ($server): $url", url).let(::listOf)
         }
     }
 
