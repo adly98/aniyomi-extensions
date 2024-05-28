@@ -64,8 +64,8 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val seasonsDOM = document.select(episodeListSelector())
         return if (seasonsDOM.isNullOrEmpty()) {
             SEpisode.create().apply {
-                name = "مشاهدة"
-                setUrlWithoutDomain(url+ "watch/")
+                setUrlWithoutDomain(url + "watch/")
+                name = this.url
             }.let(::listOf)
         } else {
             document.select(episodeListSelector()).reversed().flatMap { season ->
@@ -76,8 +76,9 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 }
                 seasonDoc.select("section.allepcont a").map { episode ->
                     SEpisode.create().apply {
-                        name = seasonNum + " : الحلقة " + episode.select("div.epnum").text().filter { it.isDigit() }
                         setUrlWithoutDomain(episode.attr("href") + "watch/")
+                        // name = seasonNum + " : الحلقة " + episode.select("div.epnum").text().filter { it.isDigit() }
+                        name = this.url
                     }
                 }
             }
