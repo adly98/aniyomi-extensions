@@ -103,14 +103,16 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
         val videoElements = document.select(videoListSelector())
-        return if(videoElements.isNullOrEmpty())
-            client.newCall(GET(response.request.url.toString() + "watch/")).execute().let(::videoListParse)
-        else
+        return if(videoElements.isNullOrEmpty()) {
+            val newClient = client.newBuilder().followRedirects(false).followSslRedirects(false).build()
+            newClient.newCall(GET(response.request.url.toString() + "watch/")).execute().let(::videoListParse)
+        } else {
             document.select(videoListSelector()).flatMap {
                 val url = it.absUrl("data-link")
                 val txt = it.text()
                 extractVideos(url, txt)
             }
+        }
     }
 
     private fun extractVideos(url: String, server: String): List<Video> {
