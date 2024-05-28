@@ -60,7 +60,7 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun videoListRequest(episode: SEpisode): Request {
         val refererHeaders = headers.newBuilder().apply {
-            add("Referer", "$baseUrl/${episode.url}".toHttpUrl().newBuilder().toString())
+            add("Referer", "$baseUrl/")
         }.build()
 
         return GET("$baseUrl/${episode.url}/watch/", headers = refererHeaders)
