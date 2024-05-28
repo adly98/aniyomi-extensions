@@ -58,14 +58,21 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // ============================== Episodes ==============================
     override fun episodeListSelector(): String = "section.allseasonss div.Block--Item"
 
+    override fun videoListRequest(episode: SEpisode): Request {
+        val refererHeaders = headers.newBuilder().apply {
+            add("Referer", "$baseUrl/${episode.url}")
+        }.build()
+
+        return GET("$baseUrl/${episode.url}/watch/", headers = refererHeaders)
+    }
     override fun episodeListParse(response: Response): List<SEpisode> {
         val document = response.asJsoup()
         val url = response.request.url.toString()
         val seasonsDOM = document.select(episodeListSelector())
         return if (seasonsDOM.isNullOrEmpty()) {
             SEpisode.create().apply {
-                setUrlWithoutDomain(url + "watch/")
-                name = this.url
+                setUrlWithoutDomain(url)
+                name = "مشاهدة"
             }.let(::listOf)
         } else {
             document.select(episodeListSelector()).reversed().flatMap { season ->
@@ -76,9 +83,8 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 }
                 seasonDoc.select("section.allepcont a").map { episode ->
                     SEpisode.create().apply {
-                        setUrlWithoutDomain(episode.attr("href") + "watch/")
-                        // name = seasonNum + " : الحلقة " + episode.select("div.epnum").text().filter { it.isDigit() }
-                        name = this.url
+                        setUrlWithoutDomain(episode.attr("href"))
+                        name = seasonNum + " : الحلقة " + episode.select("div.epnum").text().filter { it.isDigit() }
                     }
                 }
             }
