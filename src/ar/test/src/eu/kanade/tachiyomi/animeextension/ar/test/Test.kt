@@ -60,7 +60,7 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return if (seasonsDOM.isNullOrEmpty()) {
             SEpisode.create().apply {
                 name = "مشاهدة"
-                setUrlWithoutDomain("$url/watch/")
+                setUrlWithoutDomain(url+ "watch/")
             }.let(::listOf)
         } else {
             document.select(episodeListSelector()).reversed().flatMap { season ->
@@ -97,10 +97,14 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
-        return document.select(videoListSelector()).map {
-            val url = it.attr("data-link")
-            // val txt = it.text()
-            Video(url, url, url)
+        return if (document.select(videoListSelector()).isNullOrEmpty()) {
+            Video("http://", "No video found", "http://").let(::listOf)
+        } else {
+            document.select(videoListSelector()).map {
+                val url = it.absUrl("data-link")
+                // val txt = it.text()
+                Video(url, url, url)
+            }
         }
     }
 
