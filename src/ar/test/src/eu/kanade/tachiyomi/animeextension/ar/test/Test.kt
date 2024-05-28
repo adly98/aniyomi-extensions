@@ -98,13 +98,13 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     // ============================ Video Links =============================
-    override fun videoListSelector(): String = "div.watch--servers--list ul li.server--item"
+    override fun videoListSelector(): String = "ul li.server--item"
 
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
         val videoElements = document.select(videoListSelector())
         return if(videoElements.isNullOrEmpty())
-            Video("http://", "no videos found", "http://").let(::listOf)
+            Video("http://", response.request.url.toString(), "http://").let(::listOf)
         else
             document.select(videoListSelector()).flatMap {
                 val url = it.absUrl("data-link")
