@@ -58,20 +58,13 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // ============================== Episodes ==============================
     override fun episodeListSelector(): String = "section.allseasonss div.Block--Item"
 
-    override fun videoListRequest(episode: SEpisode): Request {
-        val refererHeaders = headers.newBuilder().apply {
-            add("Referer", "$baseUrl/")
-        }.build()
-
-        return GET("$baseUrl/${episode.url}/watch/", headers = refererHeaders)
-    }
     override fun episodeListParse(response: Response): List<SEpisode> {
         val document = response.asJsoup()
         val url = response.request.url.toString()
         val seasonsDOM = document.select(episodeListSelector())
         return if (seasonsDOM.isNullOrEmpty()) {
             SEpisode.create().apply {
-                setUrlWithoutDomain(url)
+                setUrlWithoutDomain(url + "watch/")
                 name = "مشاهدة"
             }.let(::listOf)
         } else {
@@ -83,7 +76,7 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 }
                 seasonDoc.select("section.allepcont a").map { episode ->
                     SEpisode.create().apply {
-                        setUrlWithoutDomain(episode.attr("href"))
+                        setUrlWithoutDomain(episode.attr("href") + "watch/")
                         name = seasonNum + " : الحلقة " + episode.select("div.epnum").text().filter { it.isDigit() }
                     }
                 }
@@ -111,7 +104,7 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val document = response.asJsoup()
         val videoElements = document.select(videoListSelector())
         return if(videoElements.isNullOrEmpty())
-            Video("http://", response.request.url.toString(), "http://").let(::listOf)
+            client.newCall(GET(response.request.url.toString() + "watch/")).execute().let(::videoListParse)
         else
             document.select(videoListSelector()).flatMap {
                 val url = it.absUrl("data-link")
