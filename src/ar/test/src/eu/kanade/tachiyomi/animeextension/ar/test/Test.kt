@@ -104,7 +104,8 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val document = response.asJsoup()
         val videoElements = document.select(videoListSelector())
         return if(videoElements.isNullOrEmpty()) {
-            Video("http://", response.request.toString(), "http://").let(::listOf)
+            val new = client.newCall(GET(response.request.url.toString() + "watch/")).execute()
+            Video("http://", new.toString(), "http://").let(::listOf)
         } else {
             document.select(videoListSelector()).flatMap {
                 val url = it.absUrl("data-link")
