@@ -12,7 +12,7 @@ import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.lib.doodextractor.DoodExtractor
-import eu.kanade.tachiyomi.lib.vidbomextractor.VidbomExtractor
+import eu.kanade.tachiyomi.lib.vidbomextractor.VidBomExtractor
 import eu.kanade.tachiyomi.lib.mixdropextractor.MixDropExtractor
 import eu.kanade.tachiyomi.lib.mp4uploadextractor.Mp4uploadExtractor
 import eu.kanade.tachiyomi.lib.okruextractor.OkruExtractor
@@ -123,7 +123,7 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             }
             "Vidbom" in server || "Vidshare" in server || "Govid" in server -> {
                 var newH = headers.newBuilder().add("Referer", baseUrl).build()
-                VidbomExtractor(client).videosFromUrl(url, newH)
+                VidBomExtractor(client).videosFromUrl(url, newH)
             }
             "dood" in server -> {
                 DoodExtractor(client).videoFromUrl(url, "Dood mirror")?.let(::listOf) ?: emptyList()
