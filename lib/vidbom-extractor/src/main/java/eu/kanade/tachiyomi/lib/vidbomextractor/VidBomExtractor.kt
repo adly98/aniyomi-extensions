@@ -15,9 +15,10 @@ class VidBomExtractor(private val client: OkHttpClient) {
 
         return data.split("file:\"").drop(1).map { source ->
             val src = source.substringBefore("\"")
-            var quality = "Vidbom: " + source.substringAfter("label:\"").substringBefore("\"")
-            if (quality.length > 15) {
-                quality = "Vidshare: 480p"
+            val quality = when {
+                "go" in url -> "Vidbom: " + source.substringAfter("label:\"").substringBefore("\"")
+                "sha" in url -> "Vidshare: SD"
+                else -> "Govad: " + source.substringAfter("label:\"").substringBefore("\"")
             }
             Video(src, quality, src)
         }
