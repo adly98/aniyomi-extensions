@@ -21,7 +21,6 @@ class VidBomExtractor(private val client: OkHttpClient) {
                 "v.mp4" in src -> {
                     "${if("go" in url) "Govid" else "Vidbom"}: " + source.substringAfter("label:\"").substringBefore("\"")
                 }
-                "sha" in url -> "Vidshare: SD"
                 // Vidshare
                 else -> {
                     val m3u8 = client.newCall(GET(src)).execute().body.string()
