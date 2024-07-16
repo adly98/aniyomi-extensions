@@ -15,10 +15,19 @@ class VidBomExtractor(private val client: OkHttpClient) {
 
         return data.split("file:\"").drop(1).map { source ->
             val src = source.substringBefore("\"")
+
             val quality = when {
-                "go" in url -> "Vidbom: " + source.substringAfter("label:\"").substringBefore("\"")
+                // Vidbom & Govid
+                "v.mp4" in src -> {
+                    "${if("go" in url) "Govid" else "Vidbom"}: " + source.substringAfter("label:\"").substringBefore("\"")
+                }
                 "sha" in url -> "Vidshare: SD"
-                else -> "Govad: " + source.substringAfter("label:\"").substringBefore("\"")
+                // Vidshare
+                else -> {
+                    val m3u8 = client.newCall(GET(src)).execute().body.string()
+                        .substringAfter("RESOLUTION=").substringAfter("x").substringBefore(",") + "p"
+                    "Vidshare: $m3u8"
+                }
             }
             Video(src, quality, src)
         }
