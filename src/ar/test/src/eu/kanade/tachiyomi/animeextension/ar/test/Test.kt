@@ -5,7 +5,6 @@ import android.content.SharedPreferences
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
-import eu.kanade.tachiyomi.animeextension.ar.test.dto.TuktukIframe
 import eu.kanade.tachiyomi.animesource.model.AnimeFilter
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.SAnime
@@ -140,15 +139,15 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     .add("X-Inertia-Version", "933f5361ce18c71b82fa342f88de9634")
                     .build()
                 val iframe = client.newCall(GET(url, newH)).execute()
-                val responseJson = json.decodeFromString<TuktukIframe>(iframe.body.string()).props.streams
-                if(responseJson.status == "success") {
-                    return responseJson.data.flatMap { quality ->
-                        quality.mirrors.parallelCatchingFlatMapBlocking {
-                            extractVideos("https${it.link}", it.driver)
-                        }
+                val allUrls = mutableListOf<Pair<String, String>>()
+                MIRRORS_REGEX.findAll(iframe.body.string()).forEach { mirror ->
+                    val mQuality = mirror.groupValues[1]
+                    Links_REGEX.findAll(mirror.groupValues[3]).forEach {
+                        allUrls.add(Pair(it.groupValues[2], "$mQuality:${it.groupValues[1]}"))
                     }
-                } else {
-                    return emptyList()
+                }
+                allUrls.parallelCatchingFlatMapBlocking {
+                    extractVideos(it.first, it.second)
                 }
             }
             "ok.ru" in url -> {
@@ -309,5 +308,8 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }
         screen.addPreference(videoQualityPref)
     }
-
+    companion object {
+        private val MIRRORS_REGEX by lazy { Regex("""label":"(.*?p).*?size":(.*?),.*?mirrors":\[(.*?)]}""")}
+        private val Links_REGEX by lazy { Regex("driver\":\"(.*?)\",\"link\":\"(.*?)\"")}
+    }
 }
