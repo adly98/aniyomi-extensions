@@ -50,7 +50,7 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return SAnime.create().apply {
             title = element.select("a").attr("title").let { editTitle(it, true) }
             thumbnail_url = element.select("img").attr(if (element.ownerDocument()!!.location().contains("?s=")) "src" else "data-src")
-            setUrlWithoutDomain(element.select("a").attr("href") + "watch/")
+            setUrlWithoutDomain(element.select("a").attr("href"))
         }
     }
 
@@ -65,7 +65,7 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val seasonsDOM = document.select(episodeListSelector())
         return if (seasonsDOM.isNullOrEmpty()) {
             SEpisode.create().apply {
-                setUrlWithoutDomain(url + "watch/")
+                setUrlWithoutDomain(url)
                 name = "مشاهدة"
             }.let(::listOf)
         } else {
@@ -77,7 +77,7 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 }
                 seasonDoc.select("section.allepcont a").map { episode ->
                     SEpisode.create().apply {
-                        setUrlWithoutDomain(episode.attr("href") + "watch/")
+                        setUrlWithoutDomain(episode.attr("href"))
                         name = seasonNum + " : الحلقة " + episode.select("div.epnum").text().filter { it.isDigit() }
                     }
                 }
@@ -100,6 +100,15 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     // ============================ Video Links =============================
     override fun videoListSelector(): String = "ul li.server--item"
+
+    override fun videoListRequest(episode: SEpisode): Request {
+        val docHeaders = headers.newBuilder().apply {
+            add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+            add("Referer", "$baseUrl/")
+        }.build()
+
+        return GET("$baseUrl${episode.url}watch/", headers = docHeaders)
+    }
 
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
