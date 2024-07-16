@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
+import eu.kanade.tachiyomi.animeextension.ar.test.dto.TuktukIframe
 import eu.kanade.tachiyomi.animesource.model.AnimeFilter
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.SAnime
@@ -19,6 +20,8 @@ import eu.kanade.tachiyomi.lib.okruextractor.OkruExtractor
 import eu.kanade.tachiyomi.lib.streamwishextractor.StreamWishExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
+import eu.kanade.tachiyomi.util.parallelCatchingFlatMapBlocking
+import kotlinx.serialization.json.Json
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
 import okhttp3.Response
@@ -36,6 +39,8 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override val lang = "ar"
 
     override val supportsLatest = true
+
+    private val json = Json { ignoreUnknownKeys = true }
 
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
@@ -117,7 +122,7 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             val new = client.newCall(GET(response.request.url.toString() + "watch/")).execute()
             Video("http://", new.toString(), "http://").let(::listOf)
         } else {
-            document.select(videoListSelector()).flatMap {
+            document.select(videoListSelector()).parallelCatchingFlatMapBlocking {
                 val url = it.absUrl("data-link")
                 val txt = it.text()
                 extractVideos(url, txt)
@@ -135,7 +140,16 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     .add("X-Inertia-Version", "933f5361ce18c71b82fa342f88de9634")
                     .build()
                 val iframe = client.newCall(GET(url, newH)).execute()
-                return Video(url, iframe.body.string(), url).let(::listOf)
+                val responseJson = json.decodeFromString<TuktukIframe>(iframe.body.string()).props.streams
+                if(responseJson.status == "success") {
+                    return responseJson.data.flatMap { quality ->
+                        quality.mirrors.parallelCatchingFlatMapBlocking {
+                            extractVideos("https${it.link}", it.driver)
+                        }
+                    }
+                } else {
+                    return emptyList()
+                }
             }
             "ok.ru" in url -> {
                 OkruExtractor(client).videosFromUrl(url)
