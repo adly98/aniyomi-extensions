@@ -127,7 +127,7 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     private fun extractVideos(url: String, server: String): List<Video> {
         return when {
-            "Tuktuk" in server -> {
+            "tuktuk" in url -> {
                 val newH = headers.newBuilder()
                     .add("X-Inertia", "true")
                     .add("X-Inertia-Partial-Component", "files/mirror/video")
@@ -156,7 +156,7 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             "mixdrop" in server -> {
                 MixDropExtractor(client).videosFromUrl(url)
             }
-            else -> Video(url, "can't resolver ($server): $url", url).let(::listOf)
+            else -> Video(url, "Can't resolver ($server): $url", url).let(::listOf)
         }
     }
 
