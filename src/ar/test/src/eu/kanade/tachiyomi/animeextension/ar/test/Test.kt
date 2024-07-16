@@ -127,11 +127,21 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     private fun extractVideos(url: String, server: String): List<Video> {
         return when {
+            "Tuktuk" in server -> {
+                val newH = headers.newBuilder()
+                    .add("X-Inertia", "true")
+                    .add("X-Inertia-Partial-Component", "files/mirror/video")
+                    .add("X-Inertia-Partial-Data", "streams")
+                    .add("X-Inertia-Version", "933f5361ce18c71b82fa342f88de9634")
+                    .build()
+                val iframe = client.newCall(GET(url, newH)).execute()
+                return Video(url, iframe.body.string(), url).let(::listOf)
+            }
             "ok.ru" in url -> {
                 OkruExtractor(client).videosFromUrl(url)
             }
             "Vidbom" in server || "Vidshare" in server || "Govid" in server -> {
-                var newH = headers.newBuilder().add("Referer", baseUrl).build()
+                val newH = headers.newBuilder().add("Referer", baseUrl).build()
                 VidBomExtractor(client).videosFromUrl(url, newH)
             }
             "dood" in server -> {
