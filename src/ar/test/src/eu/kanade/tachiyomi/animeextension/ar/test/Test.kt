@@ -138,17 +138,11 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     .build()
                 val iframe = client.newCall(GET(url, newH)).execute()
                 val allUrls = mutableListOf<List<String>>()
-                // LINKS_REGEX.findAll(iframe.body.string()).forEach {
-                //    allUrls.add(mutableListOf("https:" + it.groupValues[2].replace("\\\\", ""), it.groupValues[1]))
-                // }
-                MIRRORS_REGEX.findAll(iframe.body.string()).forEach { mirror ->
-                    val mQuality = mirror.groupValues[1]
-                    LINKS_REGEX.findAll(mirror.groupValues[3]).forEach {
-                        allUrls.add(mutableListOf("https:" + it.groupValues[2].replace("\\\\", ""), it.groupValues[1], mQuality))
-                    }
+                LINKS_REGEX.findAll(iframe.body.string()).forEach {
+                    allUrls.add(mutableListOf("https:" + it.groupValues[2].replace("\\\\", ""), it.groupValues[1]))
                 }
                 allUrls.parallelCatchingFlatMapBlocking {
-                    extractVideos(it[0], it[1], it[2])
+                    extractVideos(it[0], it[1])
                 }
             }
             "ok.ru" in url -> {
@@ -314,7 +308,7 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         screen.addPreference(videoQualityPref)
     }
     companion object {
-        private val MIRRORS_REGEX by lazy { Regex("""label":"(.*?p).*?size":(.*?),.*?mirrors":\[(.*?)]}""")}
+        // private val MIRRORS_REGEX by lazy { Regex("""label":"(.*?p).*?size":(.*?),.*?mirrors":\[(.*?)]}""")}
         private val LINKS_REGEX by lazy { Regex("driver\":\\s*\"(.*?)\",\\n*\\s*\"link\":\\s*\"(.*?)\"")}
     }
 }
