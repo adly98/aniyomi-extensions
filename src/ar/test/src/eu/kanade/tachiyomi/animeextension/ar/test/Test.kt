@@ -142,7 +142,7 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 val allUrls = mutableListOf<Pair<String, String>>()
                 MIRRORS_REGEX.findAll(iframe.body.string()).forEach { mirror ->
                     val mQuality = mirror.groupValues[1]
-                    Links_REGEX.findAll(mirror.groupValues[3]).forEach {
+                    LINKS_REGEX.findAll(mirror.groupValues[3]).forEach {
                         allUrls.add(Pair(it.groupValues[2], "$mQuality:${it.groupValues[1]}"))
                     }
                 }
@@ -310,6 +310,6 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
     companion object {
         private val MIRRORS_REGEX by lazy { Regex("""label":"(.*?p).*?size":(.*?),.*?mirrors":\[(.*?)]}""")}
-        private val Links_REGEX by lazy { Regex("driver\":\"(.*?)\",\"link\":\"(.*?)\"")}
+        private val LINKS_REGEX by lazy { Regex("driver\":\"(.*?)\",\"link\":\"(.*?)\"")}
     }
 }
