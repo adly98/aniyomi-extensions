@@ -127,7 +127,7 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }
     }
 
-    private fun extractVideos(url: String, server: String): List<Video> {
+    private fun extractVideos(url: String, server: String, customQuality: String? = null): List<Video> {
         return when {
             "tuktuk" in url -> {
                 val newH = headers.newBuilder()
@@ -137,12 +137,18 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     .add("X-Inertia-Version", "933f5361ce18c71b82fa342f88de9634")
                     .build()
                 val iframe = client.newCall(GET(url, newH)).execute()
-                val allUrls = mutableListOf<Pair<String, String>>()
-                LINKS_REGEX.findAll(iframe.body.string()).forEach {
-                    allUrls.add(Pair("https:" + it.groupValues[2].replace("\\\\", ""), it.groupValues[1]))
+                val allUrls = mutableListOf<List<String>>()
+                // LINKS_REGEX.findAll(iframe.body.string()).forEach {
+                //    allUrls.add(mutableListOf("https:" + it.groupValues[2].replace("\\\\", ""), it.groupValues[1]))
+                // }
+                MIRRORS_REGEX.findAll(iframe.body.string()).forEach { mirror ->
+                    val mQuality = mirror.groupValues[1]
+                    LINKS_REGEX.findAll(mirror.groupValues[3]).forEach {
+                        allUrls.add(mutableListOf("https:" + it.groupValues[2].replace("\\\\", ""), it.groupValues[1], mQuality))
+                    }
                 }
                 allUrls.parallelCatchingFlatMapBlocking {
-                    extractVideos(it.first, it.second)
+                    extractVideos(it[0], it[1], it[2])
                 }
             }
             "ok.ru" in url -> {
@@ -153,7 +159,7 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 VidBomExtractor(client).videosFromUrl(url, newH)
             }
             "dood" in server -> {
-                DoodExtractor(client).videoFromUrl(url, "Dood mirror")?.let(::listOf) ?: emptyList()
+                DoodExtractor(client).videoFromUrl(url, "Dood: ${customQuality ?: "Mirror"}")?.let(::listOf) ?: emptyList()
             }
             "mp4" in server -> {
                 Mp4uploadExtractor(client).videosFromUrl(url, headers)
@@ -162,7 +168,7 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 StreamWishExtractor(client, headers).videosFromUrl(url, server)
             }
             "mixdrop" in server -> {
-                MixDropExtractor(client).videosFromUrl(url)
+                MixDropExtractor(client).videosFromUrl(url, "", customQuality?.let{ "[$it] "} ?: "")
             }
             else -> emptyList()
         }
@@ -308,7 +314,7 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         screen.addPreference(videoQualityPref)
     }
     companion object {
-        // private val MIRRORS_REGEX by lazy { Regex("""label":"(.*?p).*?size":(.*?),.*?mirrors":\[(.*?)]}""")}
+        private val MIRRORS_REGEX by lazy { Regex("""label":"(.*?p).*?size":(.*?),.*?mirrors":\[(.*?)]}""")}
         private val LINKS_REGEX by lazy { Regex("driver\":\\s*\"(.*?)\",\\n*\\s*\"link\":\\s*\"(.*?)\"")}
     }
 }
