@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.SharedPreferences
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
+import eu.kanade.tachiyomi.animeextension.ar.test.dto.TuktukIframe
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilter
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
@@ -20,6 +21,7 @@ import eu.kanade.tachiyomi.lib.streamwishextractor.StreamWishExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
 import eu.kanade.tachiyomi.util.parallelCatchingFlatMapBlocking
+import kotlinx.serialization.json.Json
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
 import okhttp3.Response
@@ -37,6 +39,8 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override val lang = "ar"
 
     override val supportsLatest = true
+
+    private val json = Json { ignoreUnknownKeys = true }
 
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
@@ -136,7 +140,14 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     .add("X-Inertia-Version", "933f5361ce18c71b82fa342f88de9634")
                     .build()
                 val iframe = client.newCall(GET(url, newH)).execute()
-                val allUrls = mutableListOf<Pair<String, String>>()
+                val responseJson = json.decodeFromString<TuktukIframe>(iframe.body.string()).props.streams
+                return responseJson.data.flatMap { quality ->
+                    quality.mirrors.parallelCatchingFlatMapBlocking {
+                       // extractVideos("https${it.link}", it.driver)
+                        Video(it.link, it.link, it.link).let(::listOf)
+                    }
+                }
+                /*val allUrls = mutableListOf<Pair<String, String>>()
 
                 LINKS_REGEX.findAll(iframe.body.string()).forEach {
                     allUrls.add(Pair("https:" + it.groupValues[2].replace("\\\\", ""), it.groupValues[1]))
@@ -144,7 +155,7 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
                 allUrls.parallelCatchingFlatMapBlocking {
                     extractVideos(it.first, it.second)
-                }
+                }*/
             }
             "ok.ru" in url -> {
                 OkruExtractor(client).videosFromUrl(url)
@@ -165,7 +176,7 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             "mixdrop" in server -> {
                 MixDropExtractor(client).videosFromUrl(url)
             }
-            else -> Video(url, "Can't resolver ($server): $url", url).let(::listOf)
+            else -> emptyList()
         }
     }
 
@@ -306,6 +317,6 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
     companion object {
         // private val MIRRORS_REGEX by lazy { Regex("""label":"(.*?p).*?size":(.*?),.*?mirrors":\[(.*?)]}""")}
-        private val LINKS_REGEX by lazy { Regex("driver\":\\s*\"(.*?)\",\\n*\\s*\"link\":\\s*\"(.*?)\"")}
+        // private val LINKS_REGEX by lazy { Regex("driver\":\\s*\"(.*?)\",\\n*\\s*\"link\":\\s*\"(.*?)\"")}
     }
 }
