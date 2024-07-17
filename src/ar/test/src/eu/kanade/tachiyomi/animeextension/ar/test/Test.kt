@@ -20,7 +20,6 @@ import eu.kanade.tachiyomi.lib.streamwishextractor.StreamWishExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
 import eu.kanade.tachiyomi.util.parallelCatchingFlatMapBlocking
-import kotlinx.serialization.json.Json
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
 import okhttp3.Response
@@ -38,8 +37,6 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override val lang = "ar"
 
     override val supportsLatest = true
-
-    private val json = Json { ignoreUnknownKeys = true }
 
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
@@ -142,11 +139,11 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 val allUrls = mutableListOf<Pair<String, String>>()
 
                 LINKS_REGEX.findAll(iframe.body.string()).forEach {
-                    allUrls.add(Pair("https:" + it.groupValues[2], it.groupValues[1]))
+                    allUrls.add(Pair("https:" + it.groupValues[2].replace("\\\\", ""), it.groupValues[1]))
                 }
 
                 allUrls.parallelCatchingFlatMapBlocking {
-                    Video(it.first, it.first, it.first).let(::listOf)
+                    extractVideos(it.first, it.second)
                 }
             }
             "ok.ru" in url -> {
