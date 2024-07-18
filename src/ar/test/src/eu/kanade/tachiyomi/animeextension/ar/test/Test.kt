@@ -198,7 +198,7 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 url.addPathSegment(sectionFilter.toUriPart())
             } else if (genreFilter.state != 0) {
                 url.addPathSegment("genre")
-                url.addPathSegment(genreFilter.toUriPart().lowercase())
+                url.addPathSegment(genreFilter.toUriPart())
             } else {
                 throw Exception("من فضلك اختر قسم او تصنيف")
             }
@@ -242,7 +242,7 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     private class GenreFilter : SingleFilter(
         "التصنيف",
         arrayOf(
-            "اختر", "", "",
+            "اكشن", "مغامرة", "كرتون", "فانتازيا", "خيال-علمي", "رومانسي", "كوميدي", "عائلي", "دراما", "اثارة", "غموض", "جريمة", "رعب", "وثائقي",
         ).sortedArray(),
     )
 
