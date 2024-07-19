@@ -173,11 +173,16 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun videoUrlParse(document: Document) = throw UnsupportedOperationException()
 
     override fun List<Video>.sort(): List<Video> {
-        val preferredQuality = preferences.getString("preferred_quality", "1080")!!.toInt()
+        val preferredQuality = preferences.getString("preferred_quality", "1080")!!.toIntOrNull() ?: 1080
 
         return sortedWith(
             compareBy { video ->
-                val videoQuality = video.quality.filter { it.isDigit() }.toIntOrNull() ?: Int.MAX_VALUE  // Handle non-integers as max value
+                val videoQualityFiltered = video.quality.filter { it.isDigit() }
+                val videoQuality = if (videoQualityFiltered.isBlank()) {
+                    Int.MAX_VALUE
+                } else {
+                    videoQualityFiltered.toIntOrNull() ?: Int.MAX_VALUE
+                }
                 abs(preferredQuality - videoQuality)
             }
         )
