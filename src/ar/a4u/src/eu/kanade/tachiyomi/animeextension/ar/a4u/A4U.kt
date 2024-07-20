@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.animeextension.ar.a4u
 
 import android.app.Application
 import android.content.SharedPreferences
+import android.util.Base64
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
@@ -13,6 +14,9 @@ import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
+import eu.kanade.tachiyomi.util.parallelCatchingFlatMapBlocking
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
 import okhttp3.Response
@@ -20,6 +24,7 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import uy.kohesive.injekt.injectLazy
 
 class A4U: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
@@ -31,9 +36,12 @@ class A4U: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val supportsLatest = true
 
+    private val json: Json by injectLazy()
+
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
     }
+
 
     override fun headersBuilder() = super.headersBuilder().add("Referer", "$baseUrl/")
 
@@ -93,15 +101,32 @@ class A4U: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     // ============================ Video Links =============================
-    override fun videoFromElement(element: Element): Video {
-        TODO("Not yet implemented")
+    @Serializable
+    data class Qualities(
+        val fhd: Map<String, String> = emptyMap(),
+        val hd: Map<String, String> = emptyMap(),
+        val sd: Map<String, String> = emptyMap(),
+    )
+
+    override fun videoListParse(response: Response): List<Video> {
+        val base64 = response.asJsoup().selectFirst("input[name=wl]")
+            ?.attr("value")
+            ?.let { String(Base64.decode(it, Base64.DEFAULT)) }
+            ?: return emptyList()
+
+        val parsedData = json.decodeFromString<Qualities>(base64)
+        val streamLinks = with(parsedData) { fhd + hd + sd }
+
+        return streamLinks.values.distinct().parallelCatchingFlatMapBlocking(::extractVideos)
     }
 
-    override fun videoListSelector(): String = ""
+    private fun extractVideos(url: String) = Video(url, url, url).let(::listOf)
 
-    override fun videoUrlParse(document: Document): String {
-        TODO("Not yet implemented")
-    }
+    override fun videoFromElement(element: Element) = throw UnsupportedOperationException()
+
+    override fun videoListSelector() = throw UnsupportedOperationException()
+
+    override fun videoUrlParse(document: Document) = throw UnsupportedOperationException()
 
     override fun List<Video>.sort(): List<Video> {
         val quality = preferences.getString("preferred_quality", "1080")!!
@@ -111,7 +136,7 @@ class A4U: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     // =============================== Search ===============================
-    override fun searchAnimeSelector(): String = popularAnimeFromElement(element)
+    override fun searchAnimeSelector(): String = popularAnimeSelector()
 
     override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request {
         return if (query.isNotBlank()) {
@@ -134,7 +159,7 @@ class A4U: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }
     }
 
-    override fun searchAnimeFromElement(element: Element): SAnime = popularAnimeSelector()
+    override fun searchAnimeFromElement(element: Element): SAnime = popularAnimeFromElement(element)
 
     override fun searchAnimeNextPageSelector(): String = popularAnimeNextPageSelector()
 
@@ -176,7 +201,7 @@ class A4U: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/episode/page/$page/", headers)
 
-    override fun popularAnimeFromElement(element: Element) = SAnime.create().apply {
+    override fun latestUpdatesFromElement(element: Element) = SAnime.create().apply {
         element.selectFirst("img")!!.run {
             thumbnail_url = absUrl("src")
             title = attr("alt")
