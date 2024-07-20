@@ -197,16 +197,16 @@ class A4U: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     // =============================== Latest ===============================
-    override fun latestUpdatesSelector(): String = "div.anime-list-content div.anime-card-poster"
+    override fun latestUpdatesSelector(): String = "div.anime-list-content div.anime-card-container"
 
     override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/episode/page/$page/", headers)
 
     override fun latestUpdatesFromElement(element: Element) = SAnime.create().apply {
         element.selectFirst("img")!!.run {
             thumbnail_url = absUrl("src")
-            title = attr("alt")
+            title = attr("alt") + " (${element.select(".episodes-card-title h3").text()})"
         }
-        setUrlWithoutDomain(element.selectFirst(".anime-card-details h3 a")!!.absUrl("href"))
+        setUrlWithoutDomain(element.select(".anime-card-details h3 a").attr("href"))
     }
 
     override fun latestUpdatesNextPageSelector(): String = popularAnimeNextPageSelector()
