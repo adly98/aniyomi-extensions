@@ -147,9 +147,9 @@ class A4U: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             val statusFilter = filterList.find { it is StatusFilter } as StatusFilter
             val url = baseUrl.toHttpUrl().newBuilder()
             when {
-                genreFilter.state != 0 -> url.addPathSegment(genreFilter.toUriPart())
-                typeFilter.state != 0 -> url.addPathSegment(typeFilter.toUriPart())
-                statusFilter.state != 0 -> url.addPathSegment(statusFilter.toUriPart())
+                genreFilter.state != 0 -> url.addPathSegment("anime-genre/" + genreFilter.toUriPart())
+                typeFilter.state != 0 -> url.addPathSegment("anime-type/" + typeFilter.toUriPart())
+                statusFilter.state != 0 -> url.addPathSegment("anime-status/" + statusFilter.toUriPart())
                 else -> throw Exception("من فضلك اختر فلتر")
             }
             GET(url.toString(), headers)
