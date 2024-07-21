@@ -29,7 +29,6 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import uy.kohesive.injekt.injectLazy
 import kotlin.math.abs
 
 class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
@@ -42,7 +41,7 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val supportsLatest = true
 
-    private val json: Json by injectLazy { Json { ignoreUnknownKeys = true } }
+    private val json by lazy { Json { ignoreUnknownKeys = true } }
 
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
