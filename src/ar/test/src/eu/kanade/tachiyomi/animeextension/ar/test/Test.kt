@@ -41,7 +41,7 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val supportsLatest = true
 
-    private val json by lazy { Json { ignoreUnknownKeys = true } }
+    private val json = Json { ignoreUnknownKeys = true }
 
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
@@ -142,7 +142,7 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     .build()
                 val iframe = client.newCall(GET(url, newH)).execute().body.string()
                 val resolved = json.decodeFromString<IframeResponse>(iframe)
-                Video("https://", resolved.props.streams.data.toString(), "https://").let(::listOf)
+                Video("https://", resolved.toString(), "https://").let(::listOf)
                 /*val allUrls = mutableListOf<List<String>>()
                 LINKS_REGEX.findAll(iframe).forEach {
                     allUrls.add(mutableListOf("https:" + it.groupValues[2].replace("\\\\", ""), it.groupValues[1]))
