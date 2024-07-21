@@ -26,7 +26,7 @@ data class Data(
     val label: String,
     val mirrors: List<Mirror>,
     val resolution: String,
-    val size: Int
+    val size: Long
 )
 @Serializable
 data class Mirror(
