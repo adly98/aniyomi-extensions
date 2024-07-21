@@ -15,7 +15,7 @@ data class Props(
 )
 @Serializable
 data class Streams(
-    val `data`: List<Data>,
+    val data: List<Data>,
     val msg: String,
     val status: String,
     val token: String

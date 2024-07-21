@@ -142,7 +142,7 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     .build()
                 val iframe = client.newCall(GET(url, newH)).execute().body.string()
                 val resolved = json.decodeFromString<IframeResponse>(iframe)
-                Video("https://", resolved.toString(), "https://").let(::listOf)
+                Video("https://", resolved.component, "https://").let(::listOf)
                 /*val allUrls = mutableListOf<List<String>>()
                 LINKS_REGEX.findAll(iframe).forEach {
                     allUrls.add(mutableListOf("https:" + it.groupValues[2].replace("\\\\", ""), it.groupValues[1]))
