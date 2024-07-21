@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.SharedPreferences
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
+import eu.kanade.tachiyomi.animeextension.ar.test.dto.IframeResponse
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilter
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
@@ -139,9 +140,13 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     .add("X-Inertia-Partial-Data", "streams")
                     .add("X-Inertia-Version", "933f5361ce18c71b82fa342f88de9634")
                     .build()
-                val iframe = client.newCall(GET(url, newH)).execute().body.string()
-                //val resolved = json.decodeFromString<IframeResponse>(iframe)
-                Video("https://", iframe, "https://").let(::listOf)
+                val iframe = client.newCall(GET(url, newH)).execute().body.string().trim()
+                try {
+                    val resolved = json.decodeFromString<IframeResponse>(iframe)
+                    Video("https://", resolved.toString(), "https://").let(::listOf)
+                } catch (e: Exception) {
+                    Video("https://", e.toString(), "https://").let(::listOf)
+                }
                 /*val allUrls = mutableListOf<List<String>>()
                 LINKS_REGEX.findAll(iframe).forEach {
                     allUrls.add(mutableListOf("https:" + it.groupValues[2].replace("\\\\", ""), it.groupValues[1]))
