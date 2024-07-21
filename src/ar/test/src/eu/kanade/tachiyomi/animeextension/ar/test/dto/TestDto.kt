@@ -30,9 +30,6 @@ data class Data(
 )
 @Serializable
 data class Mirror(
-    val adblock: Boolean,
-    val checked_at: String? = null,
     val driver: String,
     val link: String,
-    val uploaded_at: String
 )
