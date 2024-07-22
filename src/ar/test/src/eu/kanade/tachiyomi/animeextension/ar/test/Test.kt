@@ -4,7 +4,6 @@ import android.app.Application
 import android.content.SharedPreferences
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
-import eu.kanade.tachiyomi.animeextension.ar.test.dto.IframeResponse
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilter
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
@@ -15,13 +14,13 @@ import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.lib.doodextractor.DoodExtractor
 import eu.kanade.tachiyomi.lib.mixdropextractor.MixDropExtractor
 import eu.kanade.tachiyomi.lib.mp4uploadextractor.Mp4uploadExtractor
+import eu.kanade.tachiyomi.lib.multiservers.MultiServers
 import eu.kanade.tachiyomi.lib.okruextractor.OkruExtractor
 import eu.kanade.tachiyomi.lib.streamwishextractor.StreamWishExtractor
 import eu.kanade.tachiyomi.lib.vidbomextractor.VidBomExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
 import eu.kanade.tachiyomi.util.parallelCatchingFlatMapBlocking
-import kotlinx.serialization.json.Json
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
 import okhttp3.Response
@@ -40,8 +39,6 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override val lang = "ar"
 
     override val supportsLatest = true
-
-    private val json = Json { ignoreUnknownKeys = true }
 
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
@@ -134,7 +131,10 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     private fun extractVideos(url: String, server: String, customQuality: String? = null): List<Video> {
         return when {
             "tuktuk" in url -> {
-                val newH = headers.newBuilder()
+                return MultiServers(client, headers).extractedUrls(url).flatMap {
+                    extractVideos(it.url, it.name, "${it.quality} [${it.size}]")
+                }
+                /*val newH = headers.newBuilder()
                     .add("X-Inertia", "true")
                     .add("X-Inertia-Partial-Component", "files/mirror/video")
                     .add("X-Inertia-Partial-Data", "streams")
@@ -143,11 +143,15 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 val iframe = client.newCall(GET(url, newH)).execute().body.string().trim()
                 try {
                     val resolved = json.decodeFromString<IframeResponse>(iframe)
+                    resolved.props.streams.data.forEach {
+                        val quality = it.resolution.substringAfter("x") + "p"
+                        val size =
+                    }
                     Video("https://", resolved.toString(), "https://").let(::listOf)
                 } catch (e: Exception) {
                     Video("https://", e.toString(), "https://").let(::listOf)
                 }
-                /*val allUrls = mutableListOf<List<String>>()
+                val allUrls = mutableListOf<List<String>>()
                 LINKS_REGEX.findAll(iframe).forEach {
                     allUrls.add(mutableListOf("https:" + it.groupValues[2].replace("\\\\", ""), it.groupValues[1]))
                 }
@@ -172,7 +176,7 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 StreamWishExtractor(client, headers).videosFromUrl(url, server)
             }
             "mixdrop" in server -> {
-                MixDropExtractor(client).videosFromUrl(url, "", customQuality?.let{ "[$it] "} ?: "")
+                MixDropExtractor(client).videosFromUrl(url, "", customQuality?.let{ "$it "} ?: "")
             }
             else -> emptyList()
         }
