@@ -128,55 +128,39 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }
     }
 
+    private val multiServers by lazy { MultiServers(client, headers) }
+    private val okRuExtractor by lazy { OkruExtractor(client) }
+    private val dooDExtractor by lazy { DoodExtractor(client) }
+    private val streamWishExtractor by lazy { StreamWishExtractor(client, headers) }
+    private val vidBomExtractor by lazy { VidBomExtractor(client) }
+    private val mp4uploadExtractor by lazy { Mp4uploadExtractor(client) }
+    private val mixDropExtractor by lazy { MixDropExtractor(client) }
+
     private fun extractVideos(url: String, server: String, customQuality: String? = null): List<Video> {
         return when {
             "tuktuk" in url -> {
-                return MultiServers(client, headers).extractedUrls(url).flatMap {
-                    extractVideos(it.url, it.name, "${it.quality} [${it.size}]")
+                return multiServers.extractedUrls(url).parallelCatchingFlatMapBlocking {
+                    extractVideos(it.url, it.name, it.quality)
                 }
-                /*val newH = headers.newBuilder()
-                    .add("X-Inertia", "true")
-                    .add("X-Inertia-Partial-Component", "files/mirror/video")
-                    .add("X-Inertia-Partial-Data", "streams")
-                    .add("X-Inertia-Version", "933f5361ce18c71b82fa342f88de9634")
-                    .build()
-                val iframe = client.newCall(GET(url, newH)).execute().body.string().trim()
-                try {
-                    val resolved = json.decodeFromString<IframeResponse>(iframe)
-                    resolved.props.streams.data.forEach {
-                        val quality = it.resolution.substringAfter("x") + "p"
-                        val size =
-                    }
-                    Video("https://", resolved.toString(), "https://").let(::listOf)
-                } catch (e: Exception) {
-                    Video("https://", e.toString(), "https://").let(::listOf)
-                }
-                val allUrls = mutableListOf<List<String>>()
-                LINKS_REGEX.findAll(iframe).forEach {
-                    allUrls.add(mutableListOf("https:" + it.groupValues[2].replace("\\\\", ""), it.groupValues[1]))
-                }
-                allUrls.parallelCatchingFlatMapBlocking {
-                    extractVideos(it[0], it[1])
-                }*/
             }
             "ok.ru" in url -> {
-                OkruExtractor(client).videosFromUrl(url)
+                okRuExtractor.videosFromUrl(url)
             }
             "Vidbom" in server || "Vidshare" in server || "Govid" in server -> {
                 val newH = headers.newBuilder().add("Referer", baseUrl).build()
-                VidBomExtractor(client).videosFromUrl(url, newH)
+                vidBomExtractor.videosFromUrl(url, newH)
             }
             "dood" in server -> {
-                DoodExtractor(client).videoFromUrl(url, "Dood: ${customQuality ?: "Mirror"}")?.let(::listOf) ?: emptyList()
+                dooDExtractor.videoFromUrl(url, "Dood: ${customQuality ?: "Mirror"}")?.let(::listOf) ?: emptyList()
             }
             "mp4" in server -> {
-                Mp4uploadExtractor(client).videosFromUrl(url, headers)
+                mp4uploadExtractor.videosFromUrl(url, headers)
             }
             "Upstream" in server || "streamwish" in server || "vidhide" in server -> {
-                StreamWishExtractor(client, headers).videosFromUrl(url, server)
+                streamWishExtractor.videosFromUrl(url, server.apply { first().uppercase() })
             }
             "mixdrop" in server -> {
-                MixDropExtractor(client).videosFromUrl(url, "", customQuality?.let{ "$it "} ?: "")
+                mixDropExtractor.videosFromUrl(url, "", customQuality?.let{ "$it "} ?: "")
             }
             else -> emptyList()
         }
@@ -312,8 +296,8 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val videoQualityPref = ListPreference(screen.context).apply {
             key = "preferred_quality"
             title = "Preferred quality"
-            entries = arrayOf("1080p", "720p", "480p", "360p", "240p")
-            entryValues = arrayOf("1080", "720", "480", "360", "240")
+            entries = arrayOf("1080p", "720p", "480p", "360p", "240p", "144p")
+            entryValues = arrayOf("1080", "720", "480", "360", "240", "144")
             setDefaultValue("1080")
             summary = "%s"
 
@@ -325,9 +309,5 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             }
         }
         screen.addPreference(videoQualityPref)
-    }
-    companion object {
-        // private val MIRRORS_REGEX by lazy { Regex("""label":"(.*?p).*?size":(.*?),.*?mirrors":\[(.*?)]}""")}
-        // private val LINKS_REGEX by lazy { Regex("driver\":\\s*\"(.*?)\",\\n*\\s*\"link\":\\s*\"(.*?)\"")}
     }
 }
