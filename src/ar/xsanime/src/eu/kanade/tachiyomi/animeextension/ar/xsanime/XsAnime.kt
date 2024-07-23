@@ -30,49 +30,48 @@ class XsAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val lang = "ar"
 
-    override val supportsLatest = false
+    override val supportsLatest = true
 
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
     }
 
-    // Popular Anime
-    override fun popularAnimeSelector(): String = "ul.boxes--holder div.itemtype_anime a"
+    // ============================== Popular ===============================
+    override fun popularAnimeSelector(): String = "div.block-post"
 
-    override fun popularAnimeRequest(page: Int): Request = GET("$baseUrl/anime_list/page/$page")
+    override fun popularAnimeRequest(page: Int): Request = GET("$baseUrl/anime_list/page/$page", headers)
 
-    override fun popularAnimeFromElement(element: Element): SAnime {
-        val anime = SAnime.create()
-        anime.setUrlWithoutDomain(element.attr("href"))
-        anime.title = element.attr("title")
-        anime.thumbnail_url = element.selectFirst("div.itemtype_anime_poster img")!!.attr("data-src")
-        return anime
+    override fun popularAnimeFromElement(element: Element) = SAnime.create().apply {
+        setUrlWithoutDomain(element.select("a").attr("href"))
+        title = element.select("a").attr("title")
+        thumbnail_url = element.selectFirst("img")!!.attr("data-img")
     }
 
     override fun popularAnimeNextPageSelector(): String = "ul.page-numbers li a.next"
 
-    // Episodes
-    override fun episodeListSelector() = "div.EpisodesList > a"
+    // ============================== Episodes ==============================
+    override fun episodeListSelector() = "#episodes a"
 
-    override fun episodeFromElement(element: Element): SEpisode {
-        val episode = SEpisode.create()
-        val epNum = getNumberFromEpsString(element.select("a > em").text())
-        episode.setUrlWithoutDomain(element.attr("abs:href"))
-        episode.name = element.select("a > em").text()
-        episode.episode_number = when {
-            epNum.isNotEmpty() -> epNum.toFloatOrNull() ?: 1F
-            else -> 1F
+    override fun episodeListParse(response: Response): List<SEpisode> {
+        val document = response.asJsoup()
+        val url = response.request.url.toString()
+        return if ("/movie/" in url) {
+            SEpisode.create().apply {
+                setUrlWithoutDomain(url)
+                name = "مشاهدة"
+            }.let(::listOf)
+        } else {
+            document.select(episodeListSelector()).map(::episodeFromElement)
         }
-
-        return episode
     }
 
-    private fun getNumberFromEpsString(epsStr: String): String {
-        return epsStr.filter { it.isDigit() }
+    override fun episodeFromElement(element: Element) = SEpisode.create().apply {
+        setUrlWithoutDomain(element.attr("href"))
+        name = element.attr("title")
+        episode_number = name.filter { it.isDigit() }.toFloatOrNull() ?: 1F
     }
 
-    // Video Links
-
+    // ============================ Video Links =============================
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
         val srcVid = preferences.getString("preferred_quality", "الجودة العالية")!!
@@ -93,23 +92,16 @@ class XsAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun videoUrlParse(document: Document) = throw UnsupportedOperationException()
 
-    // Search
+    // =============================== Search ===============================
+    override fun searchAnimeFromElement(element: Element): SAnime = latestUpdatesFromElement(element)
 
-    override fun searchAnimeFromElement(element: Element): SAnime {
-        val anime = SAnime.create()
-        anime.setUrlWithoutDomain(element.attr("href"))
-        anime.title = element.attr("title")
-        anime.thumbnail_url = element.selectFirst("div.itemtype_anime_poster img")!!.attr("data-src")
-        return anime
-    }
+    override fun searchAnimeNextPageSelector(): String = popularAnimeNextPageSelector()
 
-    override fun searchAnimeNextPageSelector(): String = "ul.page-numbers li a.next"
-
-    override fun searchAnimeSelector(): String = "ul.boxes--holder div.itemtype_anime a"
+    override fun searchAnimeSelector(): String = popularAnimeSelector()
 
     override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request {
         return if (query.isNotBlank()) {
-            GET("$baseUrl/?s=$query&type=anime&page=$page", headers)
+            GET("$baseUrl/page/$page/?s=$query", headers)
         } else {
             val url = "$baseUrl/anime_list/page/$page/?".toHttpUrlOrNull()!!.newBuilder()
             filters.forEach { filter ->
@@ -125,25 +117,26 @@ class XsAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }
     }
 
-    // Anime Details
-
+    // =========================== Anime Details ============================
     override fun animeDetailsParse(document: Document): SAnime {
         val anime = SAnime.create()
-        anime.thumbnail_url = document.selectFirst("div.inner--image img")!!.attr("src")
-        anime.title = document.select("h1.post--inner-title").text()
-        anime.genre = document.select("ul.terms--and--metas > li:contains(تصنيفات الأنمي) > a").joinToString(", ") { it.text() }
-        anime.description = document.select("div.post--content--inner").text()
-        document.select("ul.terms--and--metas li:contains(عدد الحلقات) a").text()?.also { statusText ->
+        anime.thumbnail_url = document.select("div.posterWrapper div.poster").attr("style")
+            .substringAfter("url(").substringBefore(")")
+        anime.title = document.select("li.item-current.item-archive").text()
+        anime.genre = document.select("div.singleInfoCon ul > li:contains(التصنيف) > a").joinToString(", ") { it.text() }
+        anime.description = document.select("div.singleInfo div.story p").text()
+        document.select("div.singleInfoCon ul:contains(عدد الحلقات)").text().filter { it.isDigit() }.toIntOrNull().also { episodesNum ->
+            val episodesCount = document.select("#episodes a").size + 1
             when {
-                statusText.contains("غير معروف", true) -> anime.status = SAnime.ONGOING
-                else -> anime.status = SAnime.COMPLETED
+                episodesCount == episodesNum || episodesNum == null -> anime.status = SAnime.COMPLETED
+                episodesCount < episodesNum -> anime.status = SAnime.ONGOING
+                else -> anime.status = SAnime.UNKNOWN
             }
         }
         return anime
     }
 
-    // Filters
-
+    // =============================== Filters ===============================
     override fun getFilterList() = AnimeFilterList(
         AnimeFilter.Header("NOTE: Ignored if using text search!"),
         AnimeFilter.Separator(),
@@ -192,25 +185,29 @@ class XsAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         fun toUriPart() = vals[state].first
     }
 
-    // Latest
+    // =============================== Latest ===============================
+    override fun latestUpdatesNextPageSelector(): String = popularAnimeNextPageSelector()
 
-    override fun latestUpdatesNextPageSelector(): String? = throw UnsupportedOperationException()
+    override fun latestUpdatesFromElement(element: Element) = SAnime.create().apply {
+        val url = element.select("a").attr("href")
+            .replace("episode", "anime").split("-").dropLast(2).joinToString("-")
+        setUrlWithoutDomain(url)
+        title = element.select("a").attr("title")
+        thumbnail_url = element.selectFirst("img")!!.attr("data-img")
+    }
 
-    override fun latestUpdatesFromElement(element: Element): SAnime = throw UnsupportedOperationException()
+    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/episode/page/$page", headers)
 
-    override fun latestUpdatesRequest(page: Int): Request = throw UnsupportedOperationException()
+    override fun latestUpdatesSelector(): String = popularAnimeSelector()
 
-    override fun latestUpdatesSelector(): String = throw UnsupportedOperationException()
-
-    // Preferences
-
+    // =============================== Settings ===============================
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
         val qualityPref = ListPreference(screen.context).apply {
             key = "preferred_quality"
             title = "Preferred Quality"
-            entries = arrayOf("الجودة العالية", "الجودة الخارقة", "الجودة المتوسطة")
-            entryValues = arrayOf("الجودة العالية", "الجودة الخارقة", "الجودة المتوسطة")
-            setDefaultValue("الجودة العالية")
+            entries = arrayOf("1080p", "720p", "480p", "360p", "240p")
+            entryValues = arrayOf("1080", "720", "480", "360", "240")
+            setDefaultValue("1080")
             summary = "%s"
 
             setOnPreferenceChangeListener { _, newValue ->
