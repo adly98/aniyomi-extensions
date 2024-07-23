@@ -11,10 +11,18 @@ import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
+import eu.kanade.tachiyomi.lib.doodextractor.DoodExtractor
+import eu.kanade.tachiyomi.lib.mixdropextractor.MixDropExtractor
+import eu.kanade.tachiyomi.lib.mp4uploadextractor.Mp4uploadExtractor
+import eu.kanade.tachiyomi.lib.multiservers.MultiServers
+import eu.kanade.tachiyomi.lib.okruextractor.OkruExtractor
+import eu.kanade.tachiyomi.lib.streamwishextractor.StreamWishExtractor
+import eu.kanade.tachiyomi.lib.vidbomextractor.VidBomExtractor
+import eu.kanade.tachiyomi.lib.voeextractor.VoeExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
-import okhttp3.Headers
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import eu.kanade.tachiyomi.util.parallelCatchingFlatMapBlocking
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
@@ -72,25 +80,71 @@ class XsAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     // ============================ Video Links =============================
+    override fun videoListSelector(): String = "div.servList li"
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
-        val srcVid = preferences.getString("preferred_quality", "الجودة العالية")!!
-        val iframe = document.select("div.downloads ul div.listServ:contains($srcVid) div.serL a[href~=4shared]").attr("href").substringBeforeLast("/").replace("video", "web/embed/file")
-        val referer = response.request.url.toString()
-        val refererHeaders = Headers.headersOf("referer", referer)
-        val iframeResponse = client.newCall(GET(iframe, refererHeaders))
-            .execute().asJsoup()
-        return iframeResponse.select(videoListSelector()).map { videoFromElement(it) }
+        val videoElements = document.select(videoListSelector()).toList()
+            .map { Pair(it.attr("data-embed").trim(), it.select("span.server").text().trim().lowercase()) }.distinct()
+        return videoElements.parallelCatchingFlatMapBlocking { extractVideos(it.first, it.second) }
     }
 
-    override fun videoListSelector() = "source"
+    private val multiServers by lazy { MultiServers(client, headers) }
+    private val okRuExtractor by lazy { OkruExtractor(client) }
+    private val dooDExtractor by lazy { DoodExtractor(client) }
+    private val streamWishExtractor by lazy { StreamWishExtractor(client, headers) }
+    private val vidBomExtractor by lazy { VidBomExtractor(client) }
+    private val mp4uploadExtractor by lazy { Mp4uploadExtractor(client) }
+    private val mixDropExtractor by lazy { MixDropExtractor(client) }
+    private val voeExtractor by lazy { VoeExtractor(client) }
 
-    override fun videoFromElement(element: Element): Video {
-        element.attr("src")
-        return Video(element.attr("src"), "Default: If you want to change the quality go to extension settings", element.attr("src"))
+    private fun extractVideos(url: String, server: String, customQuality: String? = null): List<Video> {
+        return when {
+            "leech" in server -> {
+                return multiServers.extractedUrls(url).map {
+                    Video(it.url, "${it.name}: ${it.quality}", it.url)
+                }
+            }
+            "iframe" in url -> {
+                return multiServers.extractedUrls(url).parallelCatchingFlatMapBlocking {
+                    extractVideos(it.url, it.name, it.quality)
+                }
+            }
+            "upstream" in server || "streamwish" in server || "vidhide" in server -> {
+                streamWishExtractor.videosFromUrl(url, server.apply { first().uppercase() })
+            }
+            "vadbam" in server || "lulustream" in server -> {
+                val newH = headers.newBuilder().add("Referer", baseUrl).build()
+                vidBomExtractor.videosFromUrl(url, newH)
+            }
+            "mixdrop" in server -> {
+                mixDropExtractor.videosFromUrl(url, "", customQuality?.let{ "$it "} ?: "")
+            }
+            "mp4" in server -> {
+                mp4uploadExtractor.videosFromUrl(url, headers)
+            }
+            "ok.ru" in url -> {
+                okRuExtractor.videosFromUrl(url)
+            }
+            "voe" in server -> {
+                voeExtractor.videosFromUrl(url)
+            }
+            "dood" in server -> {
+                dooDExtractor.videoFromUrl(url, "Dood: ${customQuality ?: "Mirror"}")?.let(::listOf) ?: emptyList()
+            }
+            else -> emptyList()
+        }
     }
+
+    override fun videoFromElement(element: Element) = throw UnsupportedOperationException()
 
     override fun videoUrlParse(document: Document) = throw UnsupportedOperationException()
+
+    override fun List<Video>.sort(): List<Video> {
+        val quality = preferences.getString("preferred_quality", "1080")!!
+        return sortedWith(
+            compareBy { it.quality.contains(quality) },
+        ).reversed()
+    }
 
     // =============================== Search ===============================
     override fun searchAnimeFromElement(element: Element): SAnime = latestUpdatesFromElement(element)
@@ -103,17 +157,21 @@ class XsAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return if (query.isNotBlank()) {
             GET("$baseUrl/page/$page/?s=$query", headers)
         } else {
-            val url = "$baseUrl/anime_list/page/$page/?".toHttpUrlOrNull()!!.newBuilder()
-            filters.forEach { filter ->
-                when (filter) {
-                    // is SeasonFilter -> url.addQueryParameter("season", filter.toUriPart())
-                    is GenreFilter -> url.addQueryParameter("genre", filter.toUriPart())
-                    is StatusFilter -> url.addQueryParameter("status", filter.toUriPart())
-                    // is LetterFilter -> url.addQueryParameter("letter", filter.toUriPart())
-                    else -> {}
-                }
+            val filterList = if (filters.isEmpty()) getFilterList() else filters
+            val categoryFilter = filterList.find { it is CategoryFilter } as CategoryFilter
+            val genreFilter = filterList.find { it is GenreFilter } as GenreFilter
+            val url = baseUrl.toHttpUrl().newBuilder()
+            if (categoryFilter.state != 0) {
+                url.addPathSegment(categoryFilter.toUriPart())
+            } else if (genreFilter.state != 0) {
+                url.addPathSegment("anime_genre")
+                url.addPathSegment(genreFilter.toUriPart())
+            } else {
+                throw Exception("من فضلك اختر قسم او تصنيف")
             }
-            GET(url.build().toString(), headers)
+            url.addPathSegment("page")
+            url.addPathSegment(page.toString())
+            GET(url.toString(), headers)
         }
     }
 
@@ -123,7 +181,7 @@ class XsAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         anime.thumbnail_url = document.select("div.posterWrapper div.poster").attr("style")
             .substringAfter("url(").substringBefore(")")
         anime.title = document.select("li.item-current.item-archive").text()
-        anime.genre = document.select("div.singleInfoCon ul > li:contains(التصنيف) > a").joinToString(", ") { it.text() }
+        anime.genre = document.select("div.singleInfoCon ul:contains(التصنيف) > a").joinToString(", ") { it.text() }
         anime.description = document.select("div.singleInfo div.story p").text()
         document.select("div.singleInfoCon ul:contains(عدد الحلقات)").text().filter { it.isDigit() }.toIntOrNull().also { episodesNum ->
             val episodesCount = document.select("#episodes a").size + 1
@@ -138,51 +196,36 @@ class XsAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     // =============================== Filters ===============================
     override fun getFilterList() = AnimeFilterList(
-        AnimeFilter.Header("NOTE: Ignored if using text search!"),
+        AnimeFilter.Header("يمكنك تصفح اقسام الموقع اذا كان البحث فارغ"),
+        CategoryFilter(),
         AnimeFilter.Separator(),
-        GenreFilter(getGenreFilters()),
-        StatusFilter(getStatusFilters()),
-        // SeasonFilter(getStatusFilters()),
-        // LetterFilter(getLetterFilter()),
+        AnimeFilter.Header("التصنيفات تعمل اذا كان 'اقسام الموقع' على 'اختر' فقط"),
+        GenreFilter(),
     )
 
-    private class StatusFilter(vals: Array<Pair<String?, String>>) : UriPartFilter("حالة الأنمي", vals)
-    private class GenreFilter(vals: Array<Pair<String?, String>>) : UriPartFilter("تصنيفات الانمى", vals)
-    // private class SeasonFilter(vals: Array<Pair<String?, String>>) : UriPartFilter("موسم الانمى", vals)
-    // private class LetterFilter(vals: Array<Pair<String?, String>>) : UriPartFilter("الحرف", vals)
-
-    private fun getStatusFilters(): Array<Pair<String?, String>> = arrayOf(
-        Pair("", "<اختر>"),
-        Pair("مستمر", "مستمر"),
-        Pair("منتهي", "منتهي"),
+    private class CategoryFilter : PairFilter(
+        "الاقسام",
+        arrayOf(
+            Pair("اختر", "none"),
+            Pair("افلام", "movies_list"),
+            Pair("مسلسلات", "anime_list"),
+        ),
     )
 
-    private fun getGenreFilters(): Array<Pair<String?, String>> = arrayOf(
-        Pair("", "<اختر>"),
-        Pair("أكشن", "أكشن"),
-        Pair("تاريخي", "تاريخي"),
-        Pair("حريم", "حريم"),
-        Pair("خارق للطبيعة", "خارق للطبيعة"),
-        Pair("خيال", "خيال"),
-        Pair("دراما", "دراما"),
-        Pair("رومانسي", "رومانسي"),
-        Pair("رياضي", "رياضي"),
-        Pair("سينين", "سينين"),
-        Pair("شونين", "شونين"),
-        Pair("شياطين", "شياطين"),
-        Pair("غموض", "غموض"),
-        Pair("قوى خارقة", "قوى خارقة"),
-        Pair("كوميدي", "كوميدي"),
-        Pair("لعبة", "لعبة"),
-        Pair("مدرسي", "مدرسي"),
-        Pair("مغامرات", "مغامرات"),
-        Pair("موسيقي", "موسيقي"),
-        Pair("نفسي", "نفسي"),
+    private class GenreFilter : SingleFilter(
+        "التصنيف",
+        arrayOf(
+            "أكشن", "مغامرات", "خيال-علمي", "رومانسي", "كوميدي", "دراما", "لعبة", "مدرسي", "نفسي", "خارق-للطبيعة", "غموض", "شونين",
+        ).sortedArray(),
     )
 
-    open class UriPartFilter(displayName: String, private val vals: Array<Pair<String?, String>>) :
-        AnimeFilter.Select<String>(displayName, vals.map { it.second }.toTypedArray()) {
-        fun toUriPart() = vals[state].first
+    open class SingleFilter(displayName: String, private val vals: Array<String>) :
+        AnimeFilter.Select<String>(displayName, vals) {
+        fun toUriPart() = vals[state]
+    }
+    open class PairFilter(displayName: String, private val vals: Array<Pair<String, String>>) :
+        AnimeFilter.Select<String>(displayName, vals.map { it.first }.toTypedArray()) {
+        fun toUriPart() = vals[state].second
     }
 
     // =============================== Latest ===============================
