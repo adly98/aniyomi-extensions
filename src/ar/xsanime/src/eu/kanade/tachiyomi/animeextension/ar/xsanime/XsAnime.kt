@@ -182,7 +182,7 @@ class XsAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         anime.thumbnail_url = document.select("div.posterWrapper div.poster").attr("style")
             .substringAfter("url(").substringBefore(")")
         anime.title = document.select("li.item-current.item-archive").text()
-        anime.genre = document.select("div.singleInfoCon ul:contains(التصنيف) > a").joinToString(", ") { it.text() }
+        anime.genre = document.select("div.singleInfoCon ul:contains(التصنيف) a").joinToString(", ") { it.text() }
         anime.description = document.select("div.singleInfo div.story p").text()
         document.select("div.singleInfoCon ul:contains(عدد الحلقات)").text().filter { it.isDigit() }.toIntOrNull().also { episodesNum ->
             val episodesCount = document.select("#episodes a").size + 1
