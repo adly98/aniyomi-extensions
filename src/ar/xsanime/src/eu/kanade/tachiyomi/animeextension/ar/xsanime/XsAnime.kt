@@ -100,8 +100,9 @@ class XsAnime : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     private fun extractVideos(url: String, server: String, customQuality: String? = null): List<Video> {
         return when {
             "leech" in server -> {
+                val newH = headers.newBuilder().add("Referer", url).build()
                 return multiServers.extractedUrls(url).map {
-                    Video(it.url, "${it.name}: ${it.quality}", it.url)
+                    Video(it.url, "${it.name}: ${it.quality}", it.url, headers = newH)
                 }
             }
             "iframe" in url -> {
