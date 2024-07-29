@@ -14,13 +14,13 @@ import eu.kanade.tachiyomi.lib.mp4uploadextractor.Mp4uploadExtractor
 import eu.kanade.tachiyomi.lib.okruextractor.OkruExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
+import eu.kanade.tachiyomi.util.parallelCatchingFlatMapBlocking
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.lang.Exception
 
 class AnimeBlkom : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
@@ -32,15 +32,15 @@ class AnimeBlkom : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val supportsLatest = true
 
-    override fun headersBuilder() = super.headersBuilder()
-        .add("referer", baseUrl)
+    override fun headersBuilder() = super.headersBuilder().add("referer", baseUrl)
 
     private val preferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
     }
 
     // ============================== Popular ===============================
-    override fun popularAnimeRequest(page: Int) = GET("$baseUrl/animes-list/?sort_by=rate&page=$page", headers)
+    override fun popularAnimeRequest(page: Int) =
+        GET("$baseUrl/animes-list/?sort_by=rate&page=$page", headers)
 
     override fun popularAnimeSelector() = "div.contents div.poster > a"
 
@@ -61,7 +61,12 @@ class AnimeBlkom : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun latestUpdatesSelector(): String = "div.recent-episode > a"
 
-    override fun latestUpdatesFromElement(element: Element): SAnime = popularAnimeFromElement(element)
+    override fun latestUpdatesFromElement(element: Element) = SAnime.create().apply {
+        val img = element.selectFirst("img")!!
+        thumbnail_url = img.attr("abs:data-original")
+        title = img.attr("alt")
+        setUrlWithoutDomain(element.attr("href").substringBeforeLast("/").replace("watch", "anime"))
+    }
 
     override fun latestUpdatesNextPageSelector(): String = "div.recent-episode"
 
@@ -76,15 +81,11 @@ class AnimeBlkom : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val url = if (query.isNotBlank()) {
             "$baseUrl/search?query=$query&page=$page"
         } else {
-            filters
-                .filterIsInstance<TypeList>()
-                .firstOrNull()
-                ?.takeIf { it.state > 0 }
+            filters.filterIsInstance<TypeList>().firstOrNull()?.takeIf { it.state > 0 }
                 ?.let { filter ->
                     val genreN = getTypeList()[filter.state].query
                     "$baseUrl/$genreN?page=$page"
-                }
-                ?: throw Exception("اختر فلتر")
+                } ?: throw Exception("اختر فلتر")
         }
         return GET(url, headers)
     }
@@ -96,13 +97,14 @@ class AnimeBlkom : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         genre = document.select("p.genres a").joinToString { it.text() }
         description = document.selectFirst("div.story p, div.story")?.text()
         author = document.selectFirst("div:contains(الاستديو) span > a")?.text()
-        status = document.selectFirst("div.info-table div:contains(حالة الأنمي) span.info")?.text()?.let {
-            when {
-                it.contains("مستمر") -> SAnime.ONGOING
-                it.contains("مكتمل") -> SAnime.COMPLETED
-                else -> null
-            }
-        } ?: SAnime.UNKNOWN
+        status = document.selectFirst("div.info-table div:contains(حالة الأنمي) span.info")?.text()
+            ?.let {
+                when {
+                    it.contains("مستمر") -> SAnime.ONGOING
+                    it.contains("مكتمل") -> SAnime.COMPLETED
+                    else -> null
+                }
+            } ?: SAnime.UNKNOWN
         artist = document.selectFirst("div:contains(المخرج) > span.info")?.text()
     }
 
@@ -142,9 +144,7 @@ class AnimeBlkom : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // ============================ Video Links =============================
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
-        return document.select("span.server a").flatMap {
-            runCatching { extractVideos(it) }.getOrElse { emptyList() }
-        }
+        return document.select("span.server a").parallelCatchingFlatMapBlocking(::extractVideos)
     }
 
     private val okruExtractor by lazy { OkruExtractor(client) }
@@ -154,10 +154,10 @@ class AnimeBlkom : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val url = element.attr("data-src").replace("http://", "https://")
         return when {
             ".vid4up" in url || "Blkom" in element.text() -> {
-                val videoDoc = client.newCall(GET(url, headers)).execute()
-                    .asJsoup()
+                val videoDoc = client.newCall(GET(url, headers)).execute().asJsoup()
                 videoDoc.select(videoListSelector()).map(::videoFromElement)
             }
+
             "ok.ru" in url -> okruExtractor.videosFromUrl(url)
             "mp4upload" in url -> mp4uploadExtractor.videosFromUrl(url, headers)
             else -> emptyList()
@@ -181,6 +181,7 @@ class AnimeBlkom : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     private class TypeList(types: Array<String>) : AnimeFilter.Select<String>("نوع الأنمي", types)
     private data class Type(val name: String, val query: String)
+
     private val typesName = getTypeList().map {
         it.name
     }.toTypedArray()
