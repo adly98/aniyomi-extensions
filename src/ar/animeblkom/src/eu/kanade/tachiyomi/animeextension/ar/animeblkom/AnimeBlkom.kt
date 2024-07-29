@@ -14,7 +14,6 @@ import eu.kanade.tachiyomi.lib.mp4uploadextractor.Mp4uploadExtractor
 import eu.kanade.tachiyomi.lib.okruextractor.OkruExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
-import eu.kanade.tachiyomi.util.parallelCatchingFlatMapBlocking
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
@@ -63,9 +62,12 @@ class AnimeBlkom : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun latestUpdatesFromElement(element: Element) = SAnime.create().apply {
         val img = element.selectFirst("img")!!
+        val url = element.attr("href")
         thumbnail_url = img.attr("abs:data-original")
-        title = img.attr("alt")
-        setUrlWithoutDomain(element.attr("href").substringBeforeLast("/").replace("watch", "anime"))
+        title = img.attr("alt").removeSuffix(" poster").let {
+            "$it (ep:${url.substringAfterLast("/")})"
+        }
+        setUrlWithoutDomain(url.substringBeforeLast("/").replace("watch", "anime"))
     }
 
     override fun latestUpdatesNextPageSelector(): String = "div.recent-episode"
@@ -137,14 +139,14 @@ class AnimeBlkom : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 epNum.isNotEmpty() -> epNum.toFloatOrNull() ?: 1F
                 else -> 1F
             }
-            name = eptitle + " :" + element.selectFirst("span:nth-child(1)")!!.text()
+            name = eptitle + " : " + element.selectFirst("span:nth-child(1)")!!.text()
         }
     }
 
     // ============================ Video Links =============================
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
-        return document.select("span.server a").parallelCatchingFlatMapBlocking(::extractVideos)
+        return document.select("span.server a").flatMap(::extractVideos)
     }
 
     private val okruExtractor by lazy { OkruExtractor(client) }
@@ -168,7 +170,7 @@ class AnimeBlkom : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun videoFromElement(element: Element): Video {
         val videoUrl = element.attr("src")
-        return Video(videoUrl, "Blkom - " + element.attr("label"), videoUrl, headers)
+        return Video(videoUrl, "Blkom: " + element.attr("label"), videoUrl, headers)
     }
 
     override fun videoUrlParse(document: Document) = throw UnsupportedOperationException()
