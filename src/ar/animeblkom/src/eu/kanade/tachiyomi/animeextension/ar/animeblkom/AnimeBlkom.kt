@@ -30,7 +30,7 @@ class AnimeBlkom : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val lang = "ar"
 
-    override val supportsLatest = false
+    override val supportsLatest = true
 
     override fun headersBuilder() = super.headersBuilder()
         .add("referer", baseUrl)
@@ -54,11 +54,14 @@ class AnimeBlkom : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun popularAnimeNextPageSelector() = "ul.pagination li.page-item a[rel=next]"
 
     // =============================== Latest ===============================
-    override fun latestUpdatesRequest(page: Int): Request = throw UnsupportedOperationException()
+    override fun latestUpdatesRequest(page: Int): Request {
+        val newH = headers.newBuilder().add("x-requested-with", "XMLHttpRequest").build()
+        return GET("$baseUrl/?page=$page", newH)
+    }
 
-    override fun latestUpdatesSelector(): String = throw UnsupportedOperationException()
+    override fun latestUpdatesSelector(): String = "div.recent-episode > a"
 
-    override fun latestUpdatesFromElement(element: Element): SAnime = throw UnsupportedOperationException()
+    override fun latestUpdatesFromElement(element: Element): SAnime = popularAnimeFromElement(element)
 
     override fun latestUpdatesNextPageSelector(): String = throw UnsupportedOperationException()
 
