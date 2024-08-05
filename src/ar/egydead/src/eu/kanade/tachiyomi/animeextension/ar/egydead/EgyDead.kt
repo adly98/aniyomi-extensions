@@ -53,7 +53,7 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun popularAnimeFromElement(element: Element): SAnime {
         val anime = SAnime.create()
         anime.setUrlWithoutDomain(element.select("a").attr("href"))
-        anime.title = element.select("h1.BottomTitle").text()
+        anime.title = element.select("h1.BottomTitle").text().let { editTitle(it, true) }
         anime.thumbnail_url = element.select("a img").attr("src")
         return anime
     }
@@ -185,7 +185,7 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun searchAnimeFromElement(element: Element): SAnime {
         val anime = SAnime.create()
         anime.setUrlWithoutDomain(element.select("a").attr("href"))
-        anime.title = element.select("h1.BottomTitle").text()
+        anime.title = element.select("h1.BottomTitle").text().let { editTitle(it, true) }
         anime.thumbnail_url = element.select("a img").attr("src")
         return anime
     }
@@ -226,7 +226,7 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun animeDetailsParse(document: Document): SAnime {
         val anime = SAnime.create()
         anime.thumbnail_url = document.select("div.single-thumbnail img").attr("src")
-        anime.title = document.select("div.infoBox div.singleTitle").text()
+        anime.title = document.select("div.infoBox div.singleTitle").text().let(::editTitle)
         anime.author = document.select("div.LeftBox li:contains(البلد) a").text()
         anime.artist = document.select("div.LeftBox li:contains(القسم) a").text()
         anime.genre =
@@ -250,9 +250,31 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun latestUpdatesFromElement(element: Element): SAnime {
         val anime = SAnime.create()
         anime.setUrlWithoutDomain(element.select("a").attr("href"))
-        anime.title = element.select("h1.BottomTitle").text()
+        anime.title = element.select("h1.BottomTitle").text().let { editTitle(it, true) }
         anime.thumbnail_url = element.select("a img").attr("src")
         return anime
+    }
+
+    // ================================== Preferences ==================================
+    private fun editTitle(title: String, details: Boolean = false): String {
+        val movieRegex = Regex("(?:فيلم|عرض)\\s(.*\\s[0-9]+)\\s(.+?)\\s")
+        val seriesRegex = Regex("(?:مسلسل|برنامج|انمي)\\s(.+)\\sالحلقة\\s(\\d+)")
+
+        return when {
+            movieRegex.containsMatchIn(title) -> {
+                val (movieName, type) = movieRegex.find(title)!!.destructured
+                movieName + if (details) " ($type)" else ""
+            }
+            seriesRegex.containsMatchIn(title) -> {
+                val (seriesName, epNum) = seriesRegex.find(title)!!.destructured
+                when {
+                    details -> "$seriesName (ep:$epNum)"
+                    seriesName.contains("الموسم") -> seriesName.split("الموسم")[0].trim()
+                    else -> seriesName
+                }
+            }
+            else -> title
+        }.trim()
     }
 
     // ================================== Preferences ==================================
