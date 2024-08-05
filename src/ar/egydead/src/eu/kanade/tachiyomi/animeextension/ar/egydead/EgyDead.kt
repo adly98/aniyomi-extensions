@@ -60,15 +60,13 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     // ================================== episodes ==================================
-
     override fun episodeListParse(response: Response): List<SEpisode> {
         val episodes = mutableListOf<SEpisode>()
-        fun episodeExtract(element: Element): SEpisode {
-            val episode = SEpisode.create()
-            episode.setUrlWithoutDomain(element.attr("href"))
-            episode.name = element.attr("title")
-            return episode
+        fun episodeExtract(element: Element) = SEpisode.create().apply {
+            setUrlWithoutDomain(element.attr("href"))
+            name = element.attr("title")
         }
+
         fun addEpisodes(res: Response, final: Boolean = false) {
             val document = res.asJsoup()
             val url = res.request.url.toString()
@@ -81,14 +79,11 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     episodes.add(episode)
                 }
             } else if (url.contains("assembly")) {
-                document.select("div.salery-list li.movieItem a").map {
-                    episodes.add(episodeExtract(it))
-                }
+                val assemblySelector = "div.salery-list li.movieItem a"
+                episodes.addAll(document.select(assemblySelector).map(::episodeExtract))
             } else if (url.contains("serie") || url.contains("season")) {
                 if (document.select("div.seasons-list li.movieItem a").isNullOrEmpty()) {
-                    document.select(episodeListSelector()).map {
-                        episodes.add(episodeFromElement(it))
-                    }
+                    episodes.addAll(document.select(episodeListSelector()).map(::episodeFromElement))
                 } else {
                     document.select("div.seasons-list li.movieItem a").map {
                         addEpisodes(client.newCall(GET(it.attr("href"))).execute(), true)
@@ -99,9 +94,10 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     addEpisodes(client.newCall(GET(it.attr("href"))).execute())
                 }
             } else {
-                val episode = SEpisode.create()
-                episode.name = "مشاهدة"
-                episode.setUrlWithoutDomain(url)
+                val episode = SEpisode.create().apply {
+                    name = "مشاهدة"
+                    setUrlWithoutDomain(url)
+                }
                 episodes.add(episode)
             }
             // document.select(episodeListSelector()).map { episodes.add(episodeFromElement(it)) }
@@ -121,7 +117,7 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     // ================================== video urls ==================================
-    private val streamWishExtractor by lazy { StreamWishExtractor(client, headers) }
+    // private val streamWishExtractor by lazy { StreamWishExtractor(client, headers) }
 
     override suspend fun getVideoList(episode: SEpisode): List<Video> {
         val requestBody = FormBody.Builder().add("View", "1").build()
@@ -136,7 +132,8 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     private fun extractVideos(url: String): List<Video> {
-        return when {
+        return Video(url, url, url).let(::listOf)
+        /* return when {
             DOOD_REGEX.containsMatchIn(url) -> {
                 DoodExtractor(client).videoFromUrl(url, "Dood mirror")?.let(::listOf)
             }
@@ -168,7 +165,7 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             }
 
             else -> null
-        } ?: emptyList()
+        } ?: emptyList()*/
     }
 
     override fun videoListSelector() = "ul.serversList li"
@@ -310,11 +307,5 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             }
         }
         screen.addPreference(videoQualityPref)
-    }
-
-    // like|kharabnahk
-    companion object {
-        private val DOOD_REGEX = Regex("(do*d(?:stream)?\\.(?:com?|watch|to|s[ho]|cx|la|w[sf]|pm|re|yt|stream))/[de]/([0-9a-zA-Z]+)|ds2play")
-        private val STREAMWISH_REGEX = Regex("ajmidyad|alhayabambi|atabknh[ks]|https://.*\\.sbs/e/")
     }
 }
