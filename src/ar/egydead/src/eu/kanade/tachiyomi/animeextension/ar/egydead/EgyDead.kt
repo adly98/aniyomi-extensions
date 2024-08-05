@@ -118,13 +118,17 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // private val streamWishExtractor by lazy { StreamWishExtractor(client, headers) }
 
     override fun videoListRequest(episode: SEpisode): Request {
-        val requestBody = FormBody.Builder().add("View", "1").build()
+        val requestBody = FormBody.Builder().add("View", 1.toString()).build()
         val newHeaders = headers.newBuilder().add("referer", "$baseUrl/").build()
-        return POST("$baseUrl${episode.url}", newHeaders, requestBody)
+        return POST("$baseUrl${episode.url}", headers = newHeaders, body = requestBody)
     }
 
     override fun videoListParse(response: Response): List<Video> {
-        return extractVideos(response.body.string())
+        val list = mutableListOf<Video>()
+        list.addAll(extractVideos(response.request.url.toString()))
+        list.addAll(extractVideos(response.request.method))
+        list.addAll(extractVideos(response.body.string()))
+        return list
         // val document = response.asJsoup()
         //return document.select(videoListSelector()).flatMap {
         //    val url = it.attr("data-link")
