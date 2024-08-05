@@ -126,7 +126,7 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun videoListParse(response: Response): List<Video> {
         val requestBody = FormBody.Builder().add("View", 1.toString()).build()
         val newHeaders = headers.newBuilder().add("referer", "$baseUrl/").build()
-        val newResponse = client.newCall(POST("$baseUrl${response.request.url}", headers = newHeaders, body = requestBody)).execute()
+        val newResponse = client.newCall(POST(response.request.url.toString(), headers = newHeaders, body = requestBody)).execute()
         val list = mutableListOf<Video>()
         list.addAll(extractVideos(newResponse.request.url.toString()))
         list.addAll(extractVideos(newResponse.request.method))
