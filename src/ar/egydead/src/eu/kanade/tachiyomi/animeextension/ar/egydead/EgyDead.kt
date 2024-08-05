@@ -13,9 +13,7 @@ import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
-import eu.kanade.tachiyomi.network.await
 import eu.kanade.tachiyomi.util.asJsoup
-import eu.kanade.tachiyomi.util.parallelCatchingFlatMap
 import okhttp3.FormBody
 import okhttp3.Request
 import okhttp3.Response
@@ -72,7 +70,8 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     val episode = episodeFromElement(it)
                     val season = document.select("div.infoBox div.singleTitle").text()
                     val seasonTxt = season.substringAfter("الموسم ").substringBefore(" ")
-                    episode.name = if (season.contains("موسم"))"الموسم $seasonTxt ${episode.name}" else episode.name
+                    episode.name =
+                        if (season.contains("موسم")) "الموسم $seasonTxt ${episode.name}" else episode.name
                     episodes.add(episode)
                 }
             } else if (url.contains("assembly")) {
@@ -80,7 +79,9 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 episodes.addAll(document.select(assemblySelector).map(::episodeExtract))
             } else if (url.contains("serie") || url.contains("season")) {
                 if (document.select("div.seasons-list li.movieItem a").isNullOrEmpty()) {
-                    episodes.addAll(document.select(episodeListSelector()).map(::episodeFromElement))
+                    episodes.addAll(
+                        document.select(episodeListSelector()).map(::episodeFromElement),
+                    )
                 } else {
                     document.select("div.seasons-list li.movieItem a").map {
                         addEpisodes(client.newCall(GET(it.attr("href"))).execute(), true)
@@ -116,21 +117,22 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // ================================== video urls ==================================
     // private val streamWishExtractor by lazy { StreamWishExtractor(client, headers) }
 
-    override suspend fun getVideoList(episode: SEpisode): List<Video> {
+    override fun videoListRequest(episode: SEpisode): Request {
         val requestBody = FormBody.Builder().add("View", "1").build()
+        val newHeaders = headers.newBuilder().add("referer", "$baseUrl/").build()
+        return POST("$baseUrl${episode.url}", newHeaders, requestBody)
+    }
 
-        val document = client.newCall(POST(baseUrl + episode.url, body = requestBody))
-            .await()
-            .asJsoup()
-        return document.select(videoListSelector()).parallelCatchingFlatMap {
+    override fun videoListParse(response: Response): List<Video> {
+        val document = response.asJsoup()
+        return document.select(videoListSelector()).flatMap {
             val url = it.attr("data-link")
             extractVideos(url)
         }
     }
 
     private fun extractVideos(url: String): List<Video> {
-        return Video(url, url, url).let(::listOf)
-        /* return when {
+        return Video(url, url, url).let(::listOf)/* return when {
             DOOD_REGEX.containsMatchIn(url) -> {
                 DoodExtractor(client).videoFromUrl(url, "Dood mirror")?.let(::listOf)
             }
@@ -170,26 +172,15 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun videoFromElement(element: Element) = throw UnsupportedOperationException()
 
     override fun List<Video>.sort(): List<Video> {
-        val quality = preferences.getString("preferred_quality", "1080p")
-        if (quality != null) {
-            val newList = mutableListOf<Video>()
-            var preferred = 0
-            for (video in this) {
-                if (video.quality == quality) {
-                    newList.add(preferred, video)
-                    preferred++
-                } else {
-                    newList.add(video)
-                }
-            }
-            return newList
-        }
-        return this
+        val quality = preferences.getString("preferred_quality", "1080")!!
+        return sortedWith(
+            compareBy { it.quality.contains(quality) },
+        ).reversed()
     }
 
     override fun videoUrlParse(document: Document) = throw UnsupportedOperationException()
 
-    // ================================== search ==================================
+    // ================================== Search ==================================
 
     override fun searchAnimeNextPageSelector(): String = "div.pagination-two a:contains(›)"
 
@@ -209,6 +200,7 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                             return GET(catUrl, headers)
                         }
                     }
+
                     else -> {}
                 }
             }
@@ -229,7 +221,8 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         CategoryList(categoriesName),
     )
 
-    private class CategoryList(categories: Array<String>) : AnimeFilter.Select<String>("الأقسام", categories)
+    private class CategoryList(categories: Array<String>) :
+        AnimeFilter.Select<String>("الأقسام", categories)
 
     private data class CatUnit(val name: String, val query: String)
 
@@ -255,7 +248,7 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         CatUnit("المواسم الكاملة", "season"),
     )
 
-    // ================================== details ==================================
+    // ================================== Anime Details ==================================
 
     override fun animeDetailsParse(document: Document): SAnime {
         val anime = SAnime.create()
@@ -263,17 +256,21 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         anime.title = document.select("div.infoBox div.singleTitle").text()
         anime.author = document.select("div.LeftBox li:contains(البلد) a").text()
         anime.artist = document.select("div.LeftBox li:contains(القسم) a").text()
-        anime.genre = document.select("div.LeftBox li:contains(النوع) a, div.LeftBox li:contains(اللغه) a, div.LeftBox li:contains(السنه) a").joinToString(", ") { it.text() }
+        anime.genre =
+            document.select("div.LeftBox li:contains(النوع) a, div.LeftBox li:contains(اللغه) a, div.LeftBox li:contains(السنه) a")
+                .joinToString(", ") { it.text() }
         anime.description = document.select("div.infoBox div.extra-content p").text()
-        anime.status = if (anime.title.contains("كامل") || anime.title.contains("فيلم")) SAnime.COMPLETED else SAnime.ONGOING
+        anime.status =
+            if (anime.title.contains("كامل") || anime.title.contains("فيلم")) SAnime.COMPLETED else SAnime.ONGOING
         return anime
     }
 
-    // ================================== latest ==================================
+    // ================================== Latest ==================================
 
     override fun latestUpdatesSelector(): String = "section.main-section li.movieItem"
 
-    override fun latestUpdatesNextPageSelector(): String = "div.pagination ul.page-numbers li a.next"
+    override fun latestUpdatesNextPageSelector(): String =
+        "div.pagination ul.page-numbers li a.next"
 
     override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/?page=$page/")
 
@@ -285,7 +282,7 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return anime
     }
 
-    // ================================== preferences ==================================
+    // ================================== Preferences ==================================
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
         val videoQualityPref = ListPreference(screen.context).apply {
