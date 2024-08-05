@@ -124,11 +124,12 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     override fun videoListParse(response: Response): List<Video> {
-        val document = response.asJsoup()
-        return document.select(videoListSelector()).flatMap {
-            val url = it.attr("data-link")
-            extractVideos(url)
-        }
+        return extractVideos(response.body.string())
+        // val document = response.asJsoup()
+        //return document.select(videoListSelector()).flatMap {
+        //    val url = it.attr("data-link")
+        //    extractVideos(url)
+        // }
     }
 
     private fun extractVideos(url: String): List<Video> {
