@@ -11,9 +11,13 @@ import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
+import eu.kanade.tachiyomi.lib.streamwishextractor.StreamWishExtractor
+import eu.kanade.tachiyomi.lib.doodextractor.DoodExtractor
+import eu.kanade.tachiyomi.lib.mixdropextractor.MixDropExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.util.asJsoup
+import eu.kanade.tachiyomi.util.parallelCatchingFlatMapBlocking
 import okhttp3.FormBody
 import okhttp3.Request
 import okhttp3.Response
@@ -115,68 +119,25 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     // ================================== video urls ==================================
-    // private val streamWishExtractor by lazy { StreamWishExtractor(client, headers) }
-
-    override fun videoListRequest(episode: SEpisode): Request {
-        val requestBody = FormBody.Builder().add("View", 1.toString()).build()
-        val newHeaders = headers.newBuilder().add("referer", "$baseUrl/").build()
-        return POST("$baseUrl${episode.url}", headers = newHeaders, body = requestBody)
-    }
+    private val streamWishExtractor by lazy { StreamWishExtractor(client, headers) }
+    private val doodExtractor by lazy { DoodExtractor(client) }
+    private val mixDropExtractor by lazy { MixDropExtractor(client) }
 
     override fun videoListParse(response: Response): List<Video> {
         val requestBody = FormBody.Builder().add("View", 1.toString()).build()
         val newHeaders = headers.newBuilder().add("referer", "$baseUrl/").build()
-        val newResponse = client.newCall(POST(response.request.url.toString(), headers = newHeaders, body = requestBody)).execute()
-        val list = mutableListOf<Video>()
-        list.addAll(extractVideos(newResponse.request.url.toString()))
-        list.addAll(extractVideos(newResponse.request.method))
-        list.addAll(extractVideos(newResponse.body.string()))
-        list.addAll(extractVideos(response.request.url.toString()))
-        list.addAll(extractVideos(response.request.method))
-        list.addAll(extractVideos(response.body.string()))
-        return list
-        // val document = response.asJsoup()
-        //return document.select(videoListSelector()).flatMap {
-        //    val url = it.attr("data-link")
-        //    extractVideos(url)
-        // }
+        val newResponse = client.newCall(POST(response.request.url.toString(), headers = newHeaders, body = requestBody)).execute().asJsoup()
+        return newResponse.select(videoListSelector()).parallelCatchingFlatMapBlocking(::extractVideos)
     }
 
-    private fun extractVideos(url: String): List<Video> {
-        return Video("no url", url, "no url").let(::listOf)
-        /* return when {
-            DOOD_REGEX.containsMatchIn(url) -> {
-                DoodExtractor(client).videoFromUrl(url, "Dood mirror")?.let(::listOf)
-            }
-            url.contains("mdbekjwqa") -> {
-                MixDropExtractor(client).videoFromUrl(url)
-            }
-            url.contains("ahvsh") -> {
-                val request = client.newCall(GET(url, headers)).execute().asJsoup()
-                val script = request.selectFirst("script:containsData(sources)")!!.data()
-                val streamLink = Regex("sources:\\s*\\[\\{\\s*\\t*file:\\s*[\"']([^\"']+)").find(script)!!.groupValues[1]
-                val quality = Regex("'qualityLabels'\\s*:\\s*\\{\\s*\".*?\"\\s*:\\s*\"(.*?)\"").find(script)!!.groupValues[1]
-                Video(streamLink, "StreamHide: $quality", streamLink).let(::listOf)
-            }
-            STREAMWISH_REGEX.containsMatchIn(url) -> {
-                streamWishExtractor.videosFromUrl(url)
-            }
-            url.contains("fanakishtuna") -> {
-                val request = client.newCall(GET(url, headers)).execute().asJsoup()
-                val data = request.selectFirst("script:containsData(sources)")!!.data()
-                val streamLink = Regex("sources:\\s*\\[\\{\\s*\\t*file:\\s*[\"']([^\"']+)").find(data)!!.groupValues[1]
-                listOf(Video(streamLink, "Mirror: High Quality", streamLink))
-            }
-            url.contains("uqload") -> {
-                val newURL = url.replace("https://uqload.co/", "https://www.uqload.co/")
-                val request = client.newCall(GET(newURL, headers)).execute().asJsoup()
-                val data = request.selectFirst("script:containsData(sources)")!!.data()
-                val streamLink = data.substringAfter("sources: [\"").substringBefore("\"]")
-                listOf(Video(streamLink, "Uqload: Mirror", streamLink))
-            }
-
+    private fun extractVideos(link: Element): List<Video> {
+        val url = link.attr("data-link")
+        return when {
+            "gsfqzmqu" in url || "gsfomqu" in url || "gsfjzmqu" in url || "732eg54de642sa" in url -> streamWishExtractor.videosFromUrl(url)
+            "dood" in url -> doodExtractor.videosFromUrl(url)
+            "mixdrop" in url -> mixDropExtractor.videosFromUrl(url)
             else -> null
-        } ?: emptyList()*/
+        } ?: emptyList()
     }
 
     override fun videoListSelector() = "ul.serversList li"
