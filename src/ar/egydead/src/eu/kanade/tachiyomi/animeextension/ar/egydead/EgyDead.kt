@@ -143,7 +143,7 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     private fun extractVideos(url: String): List<Video> {
-        return Video("", url, "").let(::listOf)
+        return Video("no url", url, "no url").let(::listOf)
         /* return when {
             DOOD_REGEX.containsMatchIn(url) -> {
                 DoodExtractor(client).videoFromUrl(url, "Dood mirror")?.let(::listOf)
