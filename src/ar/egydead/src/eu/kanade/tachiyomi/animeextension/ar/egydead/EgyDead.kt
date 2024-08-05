@@ -182,13 +182,7 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return GET(url, headers)
     }
 
-    override fun searchAnimeFromElement(element: Element): SAnime {
-        val anime = SAnime.create()
-        anime.setUrlWithoutDomain(element.select("a").attr("href"))
-        anime.title = element.select("h1.BottomTitle").text().let { editTitle(it, true) }
-        anime.thumbnail_url = element.select("a img").attr("src")
-        return anime
-    }
+    override fun searchAnimeFromElement(element: Element) = popularAnimeFromElement(element)
 
     override fun getFilterList() = AnimeFilterList(
         CategoryList(categoriesName),
@@ -247,17 +241,11 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/?page=$page/")
 
-    override fun latestUpdatesFromElement(element: Element): SAnime {
-        val anime = SAnime.create()
-        anime.setUrlWithoutDomain(element.select("a").attr("href"))
-        anime.title = element.select("h1.BottomTitle").text().let { editTitle(it, true) }
-        anime.thumbnail_url = element.select("a img").attr("src")
-        return anime
-    }
+    override fun latestUpdatesFromElement(element: Element) = popularAnimeFromElement(element)
 
-    // ================================== Preferences ==================================
+    // ================================== Utilities ==================================
     private fun editTitle(title: String, details: Boolean = false): String {
-        val movieRegex = Regex("(?:فيلم|عرض)\\s(.*\\s[0-9]+)\\s(.+?)\\s")
+        val movieRegex = Regex("(?:فيلم|عرض)\\s(.*?)\\s*(?:\\d{4})*\\s*(مترجم|مدبلج)")
         val seriesRegex = Regex("(?:مسلسل|برنامج|انمي)\\s(.+)\\sالحلقة\\s(\\d+)")
 
         return when {
