@@ -57,10 +57,10 @@ class FastMovies: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val url = element.attr("abs:href")
         val season = url.split("/").dropLast(1).last()
         val title = element.select(".episode-title").text()
-        val episode = title.filter(Char::isDigit)
+        val episode = title.filter { it.isDigit() }
         return SEpisode.create().apply {
-            name = "الموسم $season: $title"
-            this.episode_number = "$season.$episode}".toFloatOrNull() ?: 1f
+            name = "الموسم $season: الحلقة $episode"
+            this.episode_number = "$season.$episode".toFloatOrNull() ?: 1f
             setUrlWithoutDomain(url)
         }
     }
