@@ -56,11 +56,11 @@ class FastMovies: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun episodeFromElement(element: Element): SEpisode {
         val url = element.attr("abs:href")
         val season = url.split("/").dropLast(1).last()
-        val title = element.select(".episode-title").text()
-        val episode = title.filter { it.isDigit() }
+        val title = element.select(".episode-title").text().split(" ")[1]
+        val epNum = (title.toFloat() / 10).toString().replace(".", "")
         return SEpisode.create().apply {
-            name = "الموسم $season: الحلقة $episode"
-            this.episode_number = "$season.$episode".toFloatOrNull() ?: 1f
+            name = "الموسم $season : الحلقة $title"
+            this.episode_number = "$season.$epNum".toFloatOrNull() ?: 1f
             setUrlWithoutDomain(url)
         }
     }
@@ -77,20 +77,22 @@ class FastMovies: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 val url = it.select("a").attr("abs:href")
                 val sDoc = client.newCall(GET(url)).execute().asJsoup()
                 sDoc.select(episodeListSelector()).map(::episodeFromElement)
-            }.sortedBy { it.episode_number }
+            }.sortedByDescending { it.episode_number }
         }
     }
     override fun episodeListSelector(): String = ".list-group .episode-link"
     private fun seasonListSelector(): String = ".season-image-container"
     // =========================== Anime Details ============================
     override fun animeDetailsParse(document: Document): SAnime {
+        val infoElement = document.selectFirst("script:containsData(animateText), script:containsData(typeWriter)")!!.data()
         return SAnime.create().apply {
             thumbnail_url = document.select(".card img").attr("src")
-            description = document.selectFirst("script:containsData(animateText)")?.data()?.substringAfter("animateText('overview', '")
-                ?.substringBefore(");") ?: ""
+            description = when {
+                "animateText" in infoElement -> infoElement.substringAfter("animateText('overview', '").substringBefore("',")
+                else -> infoElement.substringAfter("const text = \"").substringBefore("\"")
+            }
         }
     }
-
     // ============================ Video Links =============================
     override fun videoFromElement(element: Element) = throw UnsupportedOperationException()
     override fun videoListSelector(): String = ".button-group .btn-custom"
