@@ -50,15 +50,17 @@ class FastMovies: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }
     }
 
-    override fun popularAnimeNextPageSelector(): String = "full"
+    override fun popularAnimeNextPageSelector(): String = "fill"
 
     // ============================== Episodes ==============================
     override fun episodeFromElement(element: Element): SEpisode {
         val url = element.attr("abs:href")
-        val season = url.substringBeforeLast("/")
+        val season = url.split("/").dropLast(1).last()
+        val title = element.select(".episode-title").text()
+        val episode = title.filter(Char::isDigit)
         return SEpisode.create().apply {
-            name = element.select(".episode-title").text()
-            this.episode_number = "$season.${name.filter(Char::isDigit)}".toFloatOrNull() ?: 1f
+            name = "الموسم $season: $title"
+            this.episode_number = "$season.$episode}".toFloatOrNull() ?: 1f
             setUrlWithoutDomain(url)
         }
     }
@@ -85,8 +87,8 @@ class FastMovies: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return SAnime.create().apply {
             title = document.selectFirst(".col-md-8 > h4")!!.text()
             thumbnail_url = document.select(".card img").attr("src")
-            description = document.selectFirst("script:contains(animateText)")!!.data().substringAfter("animateText('overview', '")
-                .substringBefore("');")
+            description = document.selectFirst("script:containsData(animateText)")?.data()?.substringAfter("animateText('overview', '")
+                ?.substringBefore("');") ?: ""
         }
     }
 
@@ -136,7 +138,7 @@ class FastMovies: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }
     }
 
-    override fun searchAnimeNextPageSelector(): String = ""
+    override fun searchAnimeNextPageSelector(): String = "fill"
 
     // =============================== Latest ===============================
     override fun latestUpdatesSelector() = throw UnsupportedOperationException()
