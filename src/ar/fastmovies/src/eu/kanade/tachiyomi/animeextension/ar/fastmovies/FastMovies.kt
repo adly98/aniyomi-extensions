@@ -87,7 +87,7 @@ class FastMovies: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return SAnime.create().apply {
             thumbnail_url = document.select(".card img").attr("src")
             description = document.selectFirst("script:containsData(animateText)")?.data()?.substringAfter("animateText('overview', '")
-                ?.substringBefore("');") ?: ""
+                ?.substringBefore(");") ?: ""
         }
     }
 
