@@ -85,7 +85,6 @@ class FastMovies: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // =========================== Anime Details ============================
     override fun animeDetailsParse(document: Document): SAnime {
         return SAnime.create().apply {
-            title = document.selectFirst(".col-md-8 > h4")!!.text()
             thumbnail_url = document.select(".card img").attr("src")
             description = document.selectFirst("script:containsData(animateText)")?.data()?.substringAfter("animateText('overview', '")
                 ?.substringBefore("');") ?: ""
