@@ -38,7 +38,7 @@ class FastMovies: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     // ============================== Popular ===============================
-    override fun popularAnimeSelector(): String = ".item-grid .item"
+    override fun popularAnimeSelector(): String = ".item"
 
     override fun popularAnimeRequest(page: Int): Request = GET("$baseUrl/", headers)
 
@@ -50,7 +50,7 @@ class FastMovies: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }
     }
 
-    override fun popularAnimeNextPageSelector(): String? = null
+    override fun popularAnimeNextPageSelector(): String = "full"
 
     // ============================== Episodes ==============================
     override fun episodeFromElement(element: Element): SEpisode {
