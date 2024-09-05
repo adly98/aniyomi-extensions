@@ -134,7 +134,8 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     private val streamWishExtractor by lazy { StreamWishExtractor(client, headers) }
     private val vidBomExtractor by lazy { VidBomExtractor(client) }
     private val mp4uploadExtractor by lazy { Mp4uploadExtractor(client) }
-    private val mixDropExtractor by lazy { MixDropExtractor(client) }
+    private val mixDropExtractor by lazy { MixDropExtractor(client, headers) }
+
 
     private fun extractVideos(url: String, server: String, customQuality: String? = null): List<Video> {
         return when {
@@ -160,7 +161,7 @@ class Test: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 streamWishExtractor.videosFromUrl(url, server.apply { first().uppercase() })
             }
             "mixdrop" in server -> {
-                mixDropExtractor.videosFromUrl(url, "", customQuality?.let{ "$it "} ?: "")
+                mixDropExtractor.videosFromUrl(url, customQuality?.let { "$it " } ?: "")
             }
             else -> emptyList()
         }

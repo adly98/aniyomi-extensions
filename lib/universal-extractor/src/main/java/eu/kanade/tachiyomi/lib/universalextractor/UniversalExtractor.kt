@@ -11,8 +11,10 @@ import android.webkit.WebViewClient
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.lib.playlistutils.PlaylistUtils
 import okhttp3.Headers
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import uy.kohesive.injekt.injectLazy
+import java.util.Locale
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -20,7 +22,9 @@ class UniversalExtractor(private val client: OkHttpClient) {
     private val context: Application by injectLazy()
     private val handler by lazy { Handler(Looper.getMainLooper()) }
     @SuppressLint("SetJavaScriptEnabled")
-    fun videosFromUrl(origRequestUrl: String, origRequestHeader: Headers): String {
+    fun videosFromUrl(origRequestUrl: String, origRequestHeader: Headers): List<Video> {
+        val host = origRequestUrl.toHttpUrl().host.substringBefore(".")
+            .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
         val latch = CountDownLatch(1)
         var webView: WebView? = null
         var resultUrl = ""
@@ -62,13 +66,12 @@ class UniversalExtractor(private val client: OkHttpClient) {
             webView?.destroy()
             webView = null
         }
-        when {
+        return when {
             "m3u8" in resultUrl -> playlistUtils.extractFromHls(resultUrl, origRequestUrl)
-            "mpd" in resultUrl -> playlistUtils.extractFromDash(resultUrl, { it -> "Mirror: $it" }, referer = origRequestUrl)
-            "mp4" in resultUrl -> Video(resultUrl, "Mirror", resultUrl, origRequestHeader.newBuilder().add("referer", origRequestUrl).build()).let(::listOf)
+            "mpd" in resultUrl -> playlistUtils.extractFromDash(resultUrl, { it -> "$host: $it" }, referer = origRequestUrl)
+            "mp4" in resultUrl -> Video(resultUrl, host, resultUrl, origRequestHeader.newBuilder().add("referer", origRequestUrl).build()).let(::listOf)
             else -> emptyList()
         }
-        return resultUrl
     }
 
     companion object {
