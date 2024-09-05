@@ -11,6 +11,7 @@ import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Track
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
+import eu.kanade.tachiyomi.lib.playlistutils.PlaylistUtils
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.util.asJsoup
@@ -98,6 +99,8 @@ class FastMovies: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun videoListSelector(): String = ".button-group .btn-custom"
     override fun videoUrlParse(document: Document) = throw UnsupportedOperationException()
 
+    private val playlistUtils by lazy { PlaylistUtils(client, headers) }
+
     override fun videoListParse(response: Response): List<Video> {
         val doc = response.asJsoup()
         return doc.select(videoListSelector()).flatMap {
@@ -107,12 +110,11 @@ class FastMovies: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 Video(url, quality, url).let(::listOf)
             } else {
                 val vDoc = client.newCall(GET(url)).execute().asJsoup()
-                val tracks = vDoc.select("track[srclang=ar]").map { track ->
-                    Track(track.attr("abs:src"), "ar")
+                val tracks = vDoc.select("track[label=\"Arabic\"]").map { track ->
+                    Track(track.attr("abs:src"), "Arabic")
                 }
-                vDoc.select("#myVideo source").map { source ->
-                    Video(source.attr("src"), "Test", source.attr("src"), subtitleTracks = tracks)
-                }
+                val playlist = vDoc.select("source").attr("src")
+                playlistUtils.extractFromHls(playlist, subtitleList = tracks)
             }
         }
     }
