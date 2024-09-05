@@ -58,7 +58,7 @@ class FastMovies: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val url = element.attr("abs:href")
         val season = url.split("/").dropLast(1).last()
         val title = element.select(".episode-title").text().split(" ")[1]
-        val epNum = (title.toFloat() / 10).toString().replace(".", "")
+        val epNum = (title.toFloat() / 1000).toString().replace(".", "")
         return SEpisode.create().apply {
             name = "الموسم $season : الحلقة $title"
             this.episode_number = "$season.$epNum".toFloatOrNull() ?: 1f
