@@ -21,11 +21,13 @@ class OkruExtractor(private val client: OkHttpClient) {
             Pair("lowest", "240p"),
             Pair("mobile", "144p"),
         )
-        return qualities.find { it.first == quality }?.second ?: quality.filter(Char::isDigit).toInt().let(::stnQuality).toString()
+        return qualities.find { it.first == quality }?.second ?: quality.filter(Char::isDigit).let(::stnQuality)
     }
-    private fun stnQuality(quality: Int): Int {
+    private fun stnQuality(quality: String): String {
+        val intQuality = quality.toInt()
         val standardQualities = listOf(144, 240, 360, 480, 720, 1080)
-        return standardQualities.minByOrNull { abs(it - quality) } ?: quality
+        val result =  standardQualities.minByOrNull { abs(it - intQuality) } ?: quality
+        return "${result}p"
     }
     fun videosFromUrl(url: String, prefix: String = "", fixQualities: Boolean = true): List<Video> {
         val document = client.newCall(GET(url)).execute().asJsoup()
