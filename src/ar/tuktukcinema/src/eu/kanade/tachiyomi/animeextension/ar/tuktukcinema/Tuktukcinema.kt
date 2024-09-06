@@ -188,7 +188,7 @@ class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 mixDropExtractor.videosFromUrl(url, customQuality?.let { "$it " } ?: "")
             }
 
-            else -> universalExtractor.videosFromUrl(url, headers)
+            else -> universalExtractor.videosFromUrl(url, headers, customQuality)
         }
     }
 

@@ -22,9 +22,8 @@ class UniversalExtractor(private val client: OkHttpClient) {
     private val context: Application by injectLazy()
     private val handler by lazy { Handler(Looper.getMainLooper()) }
     @SuppressLint("SetJavaScriptEnabled")
-    fun videosFromUrl(origRequestUrl: String, origRequestHeader: Headers): List<Video> {
-        val host = origRequestUrl.toHttpUrl().host.substringBefore(".")
-            .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
+    fun videosFromUrl(origRequestUrl: String, origRequestHeader: Headers, customQuality: String? = null): List<Video> {
+        val host = origRequestUrl.toHttpUrl().host.substringBefore(".").proper()
         val latch = CountDownLatch(1)
         var webView: WebView? = null
         var resultUrl = ""
@@ -67,11 +66,16 @@ class UniversalExtractor(private val client: OkHttpClient) {
             webView = null
         }
         return when {
-            "m3u8" in resultUrl -> playlistUtils.extractFromHls(resultUrl, origRequestUrl)
+            "m3u8" in resultUrl -> playlistUtils.extractFromHls(resultUrl, origRequestUrl, videoNameGen = { "$host: $it" })
             "mpd" in resultUrl -> playlistUtils.extractFromDash(resultUrl, { it -> "$host: $it" }, referer = origRequestUrl)
-            "mp4" in resultUrl -> Video(resultUrl, host, resultUrl, origRequestHeader.newBuilder().add("referer", origRequestUrl).build()).let(::listOf)
+            "mp4" in resultUrl -> Video(resultUrl, "$host: ${customQuality ?: "Mirror"}", resultUrl, origRequestHeader.newBuilder().add("referer", origRequestUrl).build()).let(::listOf)
             else -> emptyList()
         }
+    }
+
+    private fun String.proper(): String {
+        return this.replaceFirstChar { if (it.isLowerCase()) it.titlecase(
+            Locale.getDefault()) else it.toString() }
     }
 
     companion object {
