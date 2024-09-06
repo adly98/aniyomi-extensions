@@ -41,7 +41,7 @@ class MultiServers(private val client: OkHttpClient, private val headers: Header
     }
 
     data class Provider(val url: String, val name: String, val quality: String, val size: String)
-    fun stnQuality(quality: Int): Int {
+    private fun stnQuality(quality: Int): Int {
         val standardQualities = listOf(144, 240, 360, 480, 720, 1080)
         return standardQualities.minByOrNull { abs(it - quality) } ?: quality
     }

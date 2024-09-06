@@ -5,6 +5,7 @@ import eu.kanade.tachiyomi.lib.playlistutils.PlaylistUtils
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
 import okhttp3.OkHttpClient
+import kotlin.math.abs
 
 class OkruExtractor(private val client: OkHttpClient) {
     private val playlistUtils by lazy { PlaylistUtils(client) }
@@ -20,9 +21,12 @@ class OkruExtractor(private val client: OkHttpClient) {
             Pair("lowest", "240p"),
             Pair("mobile", "144p"),
         )
-        return qualities.find { it.first == quality }?.second ?: quality
+        return qualities.find { it.first == quality }?.second ?: quality.filter(Char::isDigit).toInt().let(::stnQuality).toString()
     }
-
+    private fun stnQuality(quality: Int): Int {
+        val standardQualities = listOf(144, 240, 360, 480, 720, 1080)
+        return standardQualities.minByOrNull { abs(it - quality) } ?: quality
+    }
     fun videosFromUrl(url: String, prefix: String = "", fixQualities: Boolean = true): List<Video> {
         val document = client.newCall(GET(url)).execute().asJsoup()
         val videoString = document.selectFirst("div[data-options]")
