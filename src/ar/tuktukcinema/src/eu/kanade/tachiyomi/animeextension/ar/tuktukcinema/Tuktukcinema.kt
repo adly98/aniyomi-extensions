@@ -180,7 +180,7 @@ class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 mp4uploadExtractor.videosFromUrl(url, headers)
             }
 
-            "Upstream" in server || "streamwish" in server || "vidhide" in server -> {
+            "Upstream" in server || "streamwish" in server || "vidhide" in server || "lulu" in server -> {
                 streamWishExtractor.videosFromUrl(url, server.apply { first().uppercase() })
             }
 
