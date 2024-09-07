@@ -14,6 +14,7 @@ import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.lib.streamwishextractor.StreamWishExtractor
 import eu.kanade.tachiyomi.lib.doodextractor.DoodExtractor
 import eu.kanade.tachiyomi.lib.mixdropextractor.MixDropExtractor
+import eu.kanade.tachiyomi.lib.universalextractor.UniversalExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.util.asJsoup
@@ -121,7 +122,8 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // ================================== video urls ==================================
     private val streamWishExtractor by lazy { StreamWishExtractor(client, headers) }
     private val doodExtractor by lazy { DoodExtractor(client) }
-    private val mixDropExtractor by lazy { MixDropExtractor(client) }
+    private val mixDropExtractor by lazy { MixDropExtractor(client, headers) }
+    private val universalExtractor by lazy { UniversalExtractor(client) }
 
     override fun videoListParse(response: Response): List<Video> {
         val requestBody = FormBody.Builder().add("View", 1.toString()).build()
@@ -136,8 +138,8 @@ class EgyDead : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             "gsfqzmqu" in url || "gsfomqu" in url || "gsfjzmqu" in url || "732eg54de642sa" in url -> streamWishExtractor.videosFromUrl(url)
             "dood" in url -> doodExtractor.videosFromUrl(url)
             "mixdrop" in url -> mixDropExtractor.videosFromUrl(url)
-            else -> null
-        } ?: emptyList()
+            else -> universalExtractor.videosFromUrl(url, headers)
+        }
     }
 
     override fun videoListSelector() = "ul.serversList li"
