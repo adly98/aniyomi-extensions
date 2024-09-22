@@ -22,7 +22,7 @@ import org.jsoup.nodes.Element
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
-class FilmCity: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
+class FilmCity : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val name = "Film City"
 
@@ -166,5 +166,4 @@ class FilmCity: ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }
         screen.addPreference(videoQualityPref)
     }
-
 }
