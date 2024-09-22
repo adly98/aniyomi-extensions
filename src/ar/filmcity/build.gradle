@@ -1,0 +1,7 @@
+ext {
+    extName = 'Film City'
+    extClass = '.FilmCity'
+    extVersionCode = 1
+}
+
+apply from: "$rootDir/common.gradle"

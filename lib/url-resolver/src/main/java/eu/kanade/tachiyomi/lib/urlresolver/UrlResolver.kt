@@ -1,4 +1,4 @@
-package eu.kanade.tachiyomi.lib.universalextractor
+package eu.kanade.tachiyomi.lib.urlresolver
 
 import android.annotation.SuppressLint
 import android.app.Application
@@ -18,7 +18,7 @@ import java.util.Locale
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
-class UniversalExtractor(private val client: OkHttpClient) {
+class UrlResolver(private val client: OkHttpClient) {
     private val context: Application by injectLazy()
     private val handler by lazy { Handler(Looper.getMainLooper()) }
     @SuppressLint("SetJavaScriptEnabled")

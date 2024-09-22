@@ -17,7 +17,7 @@ import eu.kanade.tachiyomi.lib.mp4uploadextractor.Mp4uploadExtractor
 import eu.kanade.tachiyomi.lib.multiservers.MultiServers
 import eu.kanade.tachiyomi.lib.okruextractor.OkruExtractor
 import eu.kanade.tachiyomi.lib.streamwishextractor.StreamWishExtractor
-import eu.kanade.tachiyomi.lib.universalextractor.UniversalExtractor
+import eu.kanade.tachiyomi.lib.urlresolver.UrlResolver
 import eu.kanade.tachiyomi.lib.vidbomextractor.VidBomExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
@@ -148,7 +148,7 @@ class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     private val vidBomExtractor by lazy { VidBomExtractor(client) }
     private val mp4uploadExtractor by lazy { Mp4uploadExtractor(client) }
     private val mixDropExtractor by lazy { MixDropExtractor(client, headers) }
-    private val universalExtractor by lazy { UniversalExtractor(client) }
+    private val urlResolver by lazy { UrlResolver(client) }
 
     private fun extractVideos(
         url: String,
@@ -188,7 +188,7 @@ class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 mixDropExtractor.videosFromUrl(url, customQuality?.let { "$it " } ?: "")
             }
 
-            else -> universalExtractor.videosFromUrl(url, headers, customQuality)
+            else -> urlResolver.videosFromUrl(url, headers, customQuality)
         }
     }
 
