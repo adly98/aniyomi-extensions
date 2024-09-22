@@ -26,7 +26,7 @@ class FilmCity : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val name = "Film City"
 
-    override val baseUrl = "https://m.filmcity12.com"
+    override val baseUrl = "https://m.filmcity12.com/i.php"
 
     override val lang = "ar"
 
@@ -39,7 +39,7 @@ class FilmCity : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // ============================== Popular ===============================
     override fun popularAnimeSelector(): String = "body div a"
 
-    override fun popularAnimeRequest(page: Int): Request = GET("$baseUrl/i.php", headers)
+    override fun popularAnimeRequest(page: Int): Request = GET(baseUrl, headers)
 
     override fun popularAnimeFromElement(element: Element): SAnime {
         val link = element.attr("href")
@@ -131,7 +131,7 @@ class FilmCity : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val nHeaders = headers.newBuilder()
             .add("Content-Type", mediaType.toString())
             .build()
-        return POST("$baseUrl/", body = requestBody, headers = nHeaders)
+        return POST(baseUrl, body = requestBody, headers = nHeaders)
     }
 
     override fun searchAnimeFromElement(element: Element) = popularAnimeFromElement(element)
