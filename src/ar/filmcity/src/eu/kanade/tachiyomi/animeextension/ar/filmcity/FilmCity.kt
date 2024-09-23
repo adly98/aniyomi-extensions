@@ -52,7 +52,7 @@ class FilmCity : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val webUrl = element.attr("href")
         val poster = element.select("img")
         return SAnime.create().apply {
-            setUrlWithoutDomain(webUrl)
+            url = webUrl
             title = poster.attr("alt").let {
                 val cat = element.select(".Cat").text()
                 when {
@@ -72,6 +72,8 @@ class FilmCity : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun popularAnimeNextPageSelector() = throw UnsupportedOperationException()
 
     // ============================== Episodes ==============================
+    override fun episodeListRequest(anime: SAnime): Request = GET(anime.url, headers)
+
     override fun episodeListParse(response: Response): List<SEpisode> {
         val webUrl = response.request.url.toString()
         return when {
