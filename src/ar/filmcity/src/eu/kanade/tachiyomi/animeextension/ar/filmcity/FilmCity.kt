@@ -44,6 +44,7 @@ class FilmCity : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun popularAnimeFromElement(element: Element): SAnime {
         val link = element.attr("href")
         return SAnime.create().apply {
+            url = link
             title = element.select("img").attr("alt").let {
                 val cat = element.select("span.Cat").text()
                 when {
@@ -57,7 +58,6 @@ class FilmCity : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 }
             }
             thumbnail_url = element.select("img").attr("src")
-            url = link
         }
     }
 
