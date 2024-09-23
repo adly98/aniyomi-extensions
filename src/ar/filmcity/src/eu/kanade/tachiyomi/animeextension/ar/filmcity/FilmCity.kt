@@ -6,6 +6,7 @@ import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
+import eu.kanade.tachiyomi.animesource.model.AnimesPage
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
@@ -41,12 +42,19 @@ class FilmCity : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun popularAnimeRequest(page: Int): Request = GET(baseUrl, headers)
 
+    override fun popularAnimeParse(response: Response): AnimesPage {
+        val document = response.asJsoup()
+        val animeList = document.select(popularAnimeSelector()).map(::popularAnimeFromElement)
+        return AnimesPage(animeList, false)
+    }
+
     override fun popularAnimeFromElement(element: Element): SAnime {
-        val link = element.attr("href")
+        val webUrl = element.attr("href")
+        val poster = element.select("img")
         return SAnime.create().apply {
-            url = link
-            title = element.select("img").attr("alt").let {
-                val cat = element.select("span.Cat").text()
+            setUrlWithoutDomain(webUrl)
+            title = poster.attr("alt").let {
+                val cat = element.select(".Cat").text()
                 when {
                     cat == "فلم" && url.contains("/d/") -> {
                         "$it (سلسلة افلام)"
@@ -57,36 +65,36 @@ class FilmCity : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     else -> "$it (مسلسل)"
                 }
             }
-            thumbnail_url = element.select("img").attr("src")
+            thumbnail_url = poster.attr("src")
         }
     }
 
-    override fun popularAnimeNextPageSelector(): String = "fill"
+    override fun popularAnimeNextPageSelector() = throw UnsupportedOperationException()
 
     // ============================== Episodes ==============================
     override fun episodeListParse(response: Response): List<SEpisode> {
-        val link = response.request.url.toString()
+        val webUrl = response.request.url.toString()
         return when {
-            link.contains("/i/") -> {
+            webUrl.contains("/i/") -> {
                 SEpisode.create().apply {
                     name = "مشاهدة"
-                    url = link
+                    url = webUrl
                 }.let(::listOf)
             }
             else -> {
                 val doc = response.asJsoup()
-                doc.select(episodeListSelector()).map { epFromElement(it, link) }
+                doc.select(episodeListSelector()).map { epFromElement(it, webUrl) }
             }
         }
     }
 
-    private fun epFromElement(element: Element, link: String): SEpisode {
+    private fun epFromElement(element: Element, webUrl: String): SEpisode {
         val title = element.text().replace(".mp4", "")
         val season = title.substringBefore("E", "1")
         val episode = title.substringAfter("E")
         return SEpisode.create().apply {
             name = episode + "الحلقة "
-            url = "$link/$title"
+            url = "$webUrl/$title"
             episode_number = ("$season.$episode").toFloatOrNull() ?: 1F
         }
     }
