@@ -22,6 +22,7 @@ import eu.kanade.tachiyomi.lib.vidbomextractor.VidBomExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
 import eu.kanade.tachiyomi.util.parallelCatchingFlatMapBlocking
+import java.util.Base64
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
 import okhttp3.Response
@@ -134,9 +135,10 @@ class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             Video("http://", new.toString(), "http://").let(::listOf)
         } else {
             document.select(videoListSelector()).parallelCatchingFlatMapBlocking {
-                val url = it.absUrl("data-link")
+                val url = it.absUrl("data-link").substringBefore("0REL0Y").reversed()
+                val newUrl = String(Base64.getDecoder().decode(url))
                 val txt = it.text()
-                extractVideos(url, txt)
+                extractVideos(newUrl, txt)
             }
         }
     }
