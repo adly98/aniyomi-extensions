@@ -138,7 +138,7 @@ class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 val url = it.attr("data-link").substringBefore("0REL0Y").reversed()
                 val newUrl = String(Base64.getDecoder().decode(url))
                 val txt = it.text()
-                listOf(Video(url, url, url), Video(newUrl, newUrl, newUrl))
+                listOf(Video(newUrl, newUrl, newUrl), extractVideos(newUrl, txt))
                 // extractVideos(url, txt)
             }
         }
