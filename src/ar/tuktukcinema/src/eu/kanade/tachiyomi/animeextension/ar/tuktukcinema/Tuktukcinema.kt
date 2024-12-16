@@ -36,7 +36,7 @@ class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val name = "توك توك سينما"
 
-    override val baseUrl = "https://w.tuktokcinema.com"
+    override val baseUrl = "https://www.tuktukcinma.com"
 
     override val lang = "ar"
 
