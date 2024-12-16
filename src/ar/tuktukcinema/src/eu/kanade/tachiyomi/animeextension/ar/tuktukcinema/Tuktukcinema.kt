@@ -136,9 +136,9 @@ class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         } else {
             document.select(videoListSelector()).parallelCatchingFlatMapBlocking {
                 val url = it.attr("data-link").substringBefore("0REL0Y").reversed()
-                // val newUrl = String(Base64.getDecoder().decode(url))
-                // val txt = it.text()
-                Video(url, url, url).let(::listOf)
+                val newUrl = String(Base64.getDecoder().decode(url))
+                val txt = it.text()
+                listOf(Video(url, url, url), Video(newUrl, newUrl, newUrl))
                 // extractVideos(url, txt)
             }
         }
