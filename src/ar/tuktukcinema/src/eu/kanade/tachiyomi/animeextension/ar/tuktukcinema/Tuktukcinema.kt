@@ -138,7 +138,8 @@ class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 val url = it.absUrl("data-link").substringBefore("0REL0Y").reversed()
                 val newUrl = String(Base64.getDecoder().decode(url))
                 val txt = it.text()
-                extractVideos(newUrl, txt)
+                Video(newUrl, newUrl, newUrl).let(::listOf)
+                // extractVideos(url, txt)
             }
         }
     }
@@ -204,7 +205,8 @@ class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
         return sortedWith(
             compareBy { video ->
-                val videoQualityFiltered = video.quality.substringBefore("[").filter { it.isDigit() }
+                val videoQualityFiltered =
+                    video.quality.substringBefore("[").filter { it.isDigit() }
                 val videoQuality = if (videoQualityFiltered.isBlank()) {
                     Int.MAX_VALUE
                 } else {
