@@ -159,11 +159,9 @@ class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         customQuality: String? = null,
     ): List<Video> {
         return when {
-            "tuktuk" in url -> {
-                
+            "iframe" in url -> {
                 return multiServers.extractedUrls(url).parallelCatchingFlatMapBlocking {
-                    //extractVideos(it.url, it.name, it.quality)
-                    Video(it.url, it.url, it.url).let(::listOf)
+                    extractVideos(it.url, it.name, it.quality)
                 }
             }
 
