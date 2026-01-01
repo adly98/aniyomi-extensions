@@ -24,11 +24,13 @@ import extensions.utils.addListPreference
 import extensions.utils.delegate
 import extensions.utils.getPreferencesLazy
 import okhttp3.Headers
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import java.util.Base64
 
 class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
@@ -42,8 +44,6 @@ class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override val lang = "ar"
 
     override val supportsLatest = true
-
-    private val playlistUtils by lazy { PlaylistUtils(client, headers) }
 
     override fun headersBuilder(): Headers.Builder {
         return super.headersBuilder()
@@ -80,8 +80,9 @@ class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 name = "مشاهدة"
             }.let(::listOf)
         } else {
-            var seasonNum = 1
+            var seasonNum = 0
             document.select(episodeListSelector()).reversed().flatMap { season ->
+                seasonNum++
                 val seasonText = season.select("h3").text()
                 var seasonDoc = document
                 if (seasonText != document.selectFirst("div#mpbreadcrumbs a span:contains(الموسم)")!!
@@ -99,7 +100,6 @@ class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                         episode_number = ("$seasonNum.$episodeNum").toFloat()
                     }
                 }
-                seasonNum++
             }
         }
     }
