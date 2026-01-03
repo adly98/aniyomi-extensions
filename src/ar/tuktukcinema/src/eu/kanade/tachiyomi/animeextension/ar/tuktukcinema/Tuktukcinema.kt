@@ -97,7 +97,7 @@ class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     SEpisode.create().apply {
                         setUrlWithoutDomain(episode.attr("href"))
                         name = "$seasonText : الحلقة " + episodeNum
-                        episode_number = ("$seasonNum.$episodeNum").toFloat()
+                        episode_number = ("$seasonNum.0$episodeNum").toFloat()
                     }
                 }
             }
