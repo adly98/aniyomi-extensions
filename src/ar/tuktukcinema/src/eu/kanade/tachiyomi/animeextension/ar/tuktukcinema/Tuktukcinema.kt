@@ -80,24 +80,18 @@ class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 name = "مشاهدة"
             }.let(::listOf)
         } else {
-            var seasonNum = 0
+            val selectedSeason = document.selectFirst("div#mpbreadcrumbs a span:contains(الموسم)")!!.text()
             document.select(episodeListSelector()).reversed().flatMap { season ->
-                seasonNum++
                 val seasonText = season.select("h3").text()
-                var seasonDoc = document
-                if (seasonText != document.selectFirst("div#mpbreadcrumbs a span:contains(الموسم)")!!
-                        .text()
-                ) {
-                    seasonDoc =
-                        client.newCall(GET(season.selectFirst("a")!!.attr("href"))).execute()
-                            .asJsoup()
-                }
+                var seasonDoc = if (selectedSeason == seasonText) document else
+                    client.newCall(GET(season.selectFirst("a")!!.attr("href"))).execute().asJsoup()
+                val seasonNum = seasonText.filter { it.isDigit() }
                 seasonDoc.select("section.allepcont a").map { episode ->
                     val episodeNum = episode.select("div.epnum").text().filter { it.isDigit() }
                     SEpisode.create().apply {
                         setUrlWithoutDomain(episode.attr("href"))
                         name = "$seasonText : الحلقة " + episodeNum
-                        episode_number = ("$seasonNum.0$episodeNum").toFloat()
+                        episode_number = ("$seasonNum.$episodeNum").toFloat()
                     }
                 }
             }
@@ -144,9 +138,10 @@ class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     ): List<Video> {
         return when {
             "iframe" in url -> {
-                return megaMax.extractUrls(url).parallelCatchingFlatMapBlocking {
-                    extractVideos(it.url, it.name, it.quality)
-                }
+                // return megaMax.extractUrls(url).parallelCatchingFlatMapBlocking {
+                //     extractVideos(it.url, it.name, it.quality)
+                // }
+                Video(url, url, url).let(::listOf)
             }
 
             "mixdrop" in server -> {
