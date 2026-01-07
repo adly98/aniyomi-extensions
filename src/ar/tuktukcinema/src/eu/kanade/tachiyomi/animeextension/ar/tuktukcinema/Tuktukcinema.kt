@@ -81,11 +81,12 @@ class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             }.let(::listOf)
         } else {
             val selectedSeason = document.selectFirst("div#mpbreadcrumbs a span:contains(الموسم)")!!.text()
-            document.select(episodeListSelector()).reversed().flatMap { season ->
+            val seasons = document.select(episodeListSelector())
+            seasons.reversed().flatMap { season ->
                 val seasonText = season.select("h3").text()
                 var seasonDoc = if (selectedSeason == seasonText) document else
                     client.newCall(GET(season.selectFirst("a")!!.attr("href"))).execute().asJsoup()
-                val seasonNum = seasonText.filter { it.isDigit() }
+                val seasonNum = if (seasons.size == 1) "1" else seasonText.filter { it.isDigit() }
                 seasonDoc.select("section.allepcont a").map { episode ->
                     val episodeNum = episode.select("div.epnum").text().filter { it.isDigit() }
                     SEpisode.create().apply {
@@ -120,7 +121,8 @@ class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val document = response.asJsoup()
         return document.select(videoListSelector()).parallelCatchingFlatMapBlocking {
             val url = it.attr("data-link").substringBefore("0REL0Y").reversed()
-            extractVideos(String(Base64.getDecoder().decode(url)), it.text())
+            Video(url, url, url).let(::listOf)
+            // extractVideos(String(Base64.getDecoder().decode(url)), it.text())
         }
     }
 
