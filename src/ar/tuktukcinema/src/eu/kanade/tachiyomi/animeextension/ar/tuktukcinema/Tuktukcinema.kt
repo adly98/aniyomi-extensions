@@ -106,24 +106,11 @@ class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun videoListSelector(): String = "ul li.server--item"
 
-    override fun videoListRequest(episode: SEpisode): Request {
-        val docHeaders = headers.newBuilder().apply {
-            add(
-                "Accept",
-                "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-            )
-            add("Referer", "$baseUrl/")
-        }.build()
-
-        return GET("$baseUrl${episode.url}watch/", headers = docHeaders)
-    }
-
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
         return document.select(videoListSelector()).parallelCatchingFlatMapBlocking {
             val url = it.attr("data-link").substringBefore("0REL0Y").reversed()
-            Video(url, url, url).let(::listOf)
-            // extractVideos(String(Base64.getDecoder().decode(url)), it.text())
+            extractVideos(String(Base64.getDecoder().decode(url)), it.text())
         }
     }
 
@@ -141,10 +128,9 @@ class Tuktukcinema : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     ): List<Video> {
         return when {
             "iframe" in url -> {
-                // return megaMax.extractUrls(url).parallelCatchingFlatMapBlocking {
-                //     extractVideos(it.url, it.name, it.quality)
-                // }
-                Video(url, url, url).let(::listOf)
+                return megaMax.extractUrls(url).parallelCatchingFlatMapBlocking {
+                    extractVideos(it.url, it.name, it.quality)
+                }
             }
 
             "mixdrop" in server -> {
